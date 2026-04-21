@@ -180,7 +180,7 @@ def _write_site(openapi_schema: dict[str, Any], module_graph: str, event_catalog
     <li><a href="../generated/database-schema-by-module.md">Database schema by module (Markdown)</a></li>
   </ul>
   <h2>API Summary</h2>
-  <p>Path count: <strong>{len(openapi_schema.get("paths", {{}}))}</strong></p>
+  <p>Path count: <strong>{len(openapi_schema.get("paths", {}))}</strong></p>
   <h2>Module Dependency Graph (Mermaid source)</h2>
   <pre>{module_graph}</pre>
   <h2>Event Count</h2>
