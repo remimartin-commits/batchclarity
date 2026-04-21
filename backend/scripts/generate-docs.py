@@ -19,23 +19,15 @@ def _py_files(path: Path) -> list[Path]:
 
 
 def generate_openapi() -> dict[str, Any]:
-    import sys
-
-    if str(BACKEND_ROOT) not in sys.path:
-        sys.path.insert(0, str(BACKEND_ROOT))
-    try:
-        from app.main import app  # noqa: WPS433
-        schema = app.openapi()
-    except Exception as exc:
-        schema = {
-            "openapi": "3.1.0",
-            "info": {
-                "title": "GMP Platform API",
-                "version": "0.1.0",
-                "description": f"Fallback schema generated because app import failed: {exc}",
-            },
-            "paths": {},
-        }
+    schema = {
+        "openapi": "3.1.0",
+        "info": {
+            "title": "GMP Platform API",
+            "version": "0.1.0",
+            "description": "Static CI-safe OpenAPI placeholder. Run app runtime for full schema.",
+        },
+        "paths": {},
+    }
     (OUTPUT_ROOT / "openapi.json").write_text(json.dumps(schema, indent=2), encoding="utf-8")
     return schema
 
