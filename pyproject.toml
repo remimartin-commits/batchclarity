@@ -1,0 +1,46 @@
+[tool.black]
+line-length = 100
+target-version = ["py312"]
+include = '\.pyi?$'
+extend-exclude = '''
+(
+  /(
+      \.git
+    | \.venv
+    | node_modules
+    | frontend/dist
+  )/
+)
+'''
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+exclude = [".git", ".venv", "node_modules", "frontend/dist"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "B", "UP"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+[tool.mypy]
+python_version = "3.12"
+mypy_path = ["backend"]
+files = ["backend/app", "backend/tests", "backend/scripts"]
+strict = true
+disallow_any_unimported = true
+disallow_any_expr = true
+disallow_any_decorated = true
+disallow_any_explicit = true
+disallow_any_generics = true
+disallow_subclassing_any = true
+warn_return_any = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unreachable = true
+show_error_codes = true
+pretty = true
+plugins = ["pydantic.mypy"]
