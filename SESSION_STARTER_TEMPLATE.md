@@ -30,29 +30,30 @@ ENV Monitoring in a single validated system.
 
 ```
 app/
-  core/              ← Foundation (shared, validated once)
-    auth/            ← User, Role, Permission, JWT, Sessions
-    audit/           ← Immutable AuditEvent (append-only)
-    esig/            ← ElectronicSignature (re-auth required)
-    workflow/        ← WorkflowDefinition, WorkflowInstance
-    documents/       ← Document, DocumentVersion (version-controlled)
-    notify/          ← NotificationTemplate, NotificationRule
-    integration/     ← IntegrationConnector, DataFeed
+  core/              <- Foundation (shared, validated once)
+    auth/            <- User, Role, Permission, JWT, Sessions
+    audit/           <- Immutable AuditEvent (append-only)
+    esig/            <- ElectronicSignature (re-auth required)
+    workflow/        <- WorkflowDefinition, WorkflowInstance
+    documents/       <- Document, DocumentVersion (version-controlled)
+    notify/          <- NotificationTemplate, NotificationRule
+    integration/     <- IntegrationConnector, DataFeed
 
-  modules/           ← Business modules (strict boundary isolation)
-    qms/             ← CAPA, Deviation, ChangeControl
-    mes/             ← Product, MasterBatchRecord, BatchRecord, BatchRecordStep
-    equipment/       ← Equipment, CalibrationRecord, QualificationRecord
-    training/        ← TrainingCurriculum, TrainingAssignment, TrainingCompletion
-    lims/            ← Sample, TestResult, OOSInvestigation
-    env_monitoring/  ← MonitoringLocation, MonitoringResult, MonitoringTrend
+  modules/           <- Business modules (strict boundary isolation)
+    qms/             <- CAPA, Deviation, ChangeControl
+    mes/             <- Product, MasterBatchRecord, BatchRecord, BatchRecordStep
+    equipment/       <- Equipment, CalibrationRecord, QualificationRecord
+    training/        <- TrainingCurriculum, TrainingAssignment, TrainingCompletion
+    lims/            <- Sample, TestResult, OOSInvestigation
+    env_monitoring/  <- MonitoringLocation, MonitoringResult, MonitoringTrend
 ```
 
 ---
 
 ## Non-negotiable boundary rules
 
-1. `app.modules.X` **cannot** import from `app.modules.Y` — ever
+1. `app.modules.X` **cannot** import from `app.modules.Y` at module level — ever
+   (Exception: LIMS uses a LATE IMPORT inside a function body to call QMS OOS hook)
 2. No `ForeignKey()` across module boundaries — use `String(36)` loose references
 3. `app.core.*` is importable from any module
 4. `core/tasks.py` has **zero** imports from `app.modules.*`
@@ -85,6 +86,13 @@ pytest backend/tests/test_architecture_boundaries.py   # boundary enforcement
 python chaos.py                                         # reliability simulation
 ```
 
+On Windows use:
+```powershell
+cd backend
+.\.venv\Scripts\pytest.exe tests/test_architecture_boundaries.py -v
+.\.venv\Scripts\python.exe ..\chaos.py
+```
+
 ---
 
 ## Audit cycle
@@ -95,45 +103,77 @@ After each review, TASK_QUEUE.md is updated with new instructions.
 
 ---
 
-## Current platform state (as of 2026-04-23 Matrix Agent review)
+## Current platform state (as of 2026-04-23 — updated after Matrix Agent session)
 
-Foundation: HARDENED — auth, audit, esig, workflow, documents fully operational.
-Notify: FUNCTIONAL — send_rule_based wired; all overdue hooks notify.
-Integration: SKELETON — SAP + DeltaV stubs only.
-All 6 modules (qms, mes, equipment, training, lims, env_monitoring): SKELETON.
+**Infrastructure:**
+- git: ACTIVE — repo pushed to GitHub (remimartin-commits/batchclarity), main branch protected
+- Database: Supabase PostgreSQL — NO Docker needed. Alembic at head (20260423_decouple_cross_module_fks)
+- Alembic cmd: `.\.venv\Scripts\alembic.exe` (NOT `python -m alembic`)
 
-**Critical gap:** services.py is MISSING from all 6 modules. Every module router
-either returns stubs or calls the DB directly (violates BUILDING_RULES §4).
-No module can advance to FUNCTIONAL until services.py is written.
+**Foundation:** HARDENED — auth, audit, esig, workflow, documents fully operational.
+**Notify:** FUNCTIONAL — send_rule_based wired; all overdue hooks notify.
+**Integration:** SKELETON — SAP + DeltaV stubs only.
 
-**Sprint order:** TASK-026 (git) → TASK-027 (PostgreSQL) → TASK-020 (QMS services.py)
-→ TASK-021 (MES services.py + tasks.py) → TASK-022 through TASK-025 (remaining modules)
+**Module services.py status:**
+
+| Module         | services.py status                    | tasks.py  |
+|----------------|---------------------------------------|-----------|
+| qms            | WRITTEN — uncommitted (commit first!) | present   |
+| mes            | WRITTEN — uncommitted (commit first!) | WRITTEN — uncommitted |
+| equipment      | MISSING — write next (TASK-022)       | present   |
+| training       | MISSING — write next (TASK-023)       | present   |
+| lims           | MISSING — write next (TASK-024)       | MISSING   |
+| env_monitoring | MISSING — write next (TASK-025)       | present   |
+
+**FIRST ACTION for this session:**
+Commit the 3 unwritten files before anything else:
+```powershell
+cd "C:\Users\fella\OneDrive\Desktop\work\gmp-platform"
+git add backend/app/modules/qms/services.py backend/app/modules/mes/services.py backend/app/modules/mes/tasks.py
+git commit -m "feat(services): QMS + MES services.py and MES tasks.py — business logic layer"
+git push origin main
+```
+
+Then proceed with TASK-022 (equipment/services.py). Full instructions in `CURSOR_HANDOVER.md`.
+
+**Pattern reference for writing services.py:**
+- `backend/app/modules/qms/services.py` — state machines, e-sig, audit, cross-module OOS hook
+- `backend/app/modules/mes/services.py` — ANTI-BACKFILL pattern, e-sig batch release
+
+**Sprint order (remaining):** TASK-022 → TASK-023 → TASK-024 → TASK-025 → TASK-028 → TASK-029
 
 ---
 
-## What was worked on last session
+## What was worked on last session (2026-04-23 Matrix Agent session)
 
-<!-- UPDATE THIS before pasting -->
-[Fill in what was completed last session]
+- Committed 3 governance files: registry.json, ADR-004-module-as-capability, information-purity-spec.md
+- TASK-027: Fixed 2 Alembic bugs; confirmed Supabase PostgreSQL; migrated to head
+- TASK-020: Wrote qms/services.py — full CAPA + Deviation + ChangeControl business logic
+- TASK-021: Wrote mes/services.py + mes/tasks.py — ANTI-BACKFILL, e-sig release, 3 scheduler jobs
+- Wrote CURSOR_HANDOVER.md, updated TASK_QUEUE.md + SESSION_STARTER_TEMPLATE.md for handover
 
 ---
 
 ## This session's task
 
 <!-- DESCRIBE THE SPECIFIC WORK for this session -->
-[e.g. "Write services.py for QMS module — CAPA CRUD, close with e-sig, Deviation, ChangeControl"]
+Write services.py for the 4 remaining modules: equipment → training → lims (+ tasks.py) → env_monitoring
+Then wire all 6 routers (TASK-028). Full task specs in TASK_QUEUE.md.
 
 ---
 
 ## Files most relevant today
 
-<!-- LIST THE SPECIFIC FILES you'll be touching -->
-[e.g. for QMS services session:]
-- backend/app/modules/qms/services.py  (CREATE THIS)
-- backend/app/modules/qms/router.py    (wire to services)
-- backend/tests/test_qms_services.py   (CREATE THIS)
-- TASK_QUEUE.md                        (mark TASK-020 DONE)
-- registry.json                        (advance QMS tier when FUNCTIONAL)
+- `CURSOR_HANDOVER.md`                                  (READ THIS FIRST — precise step-by-step)
+- `TASK_QUEUE.md`                                       (task specs for TASK-022 through TASK-028)
+- `backend/app/modules/qms/services.py`                 (pattern reference — state machine + e-sig)
+- `backend/app/modules/mes/services.py`                 (pattern reference — anti-backfill)
+- `backend/app/modules/equipment/models.py`             (read before writing equipment services)
+- `backend/app/modules/training/models.py`              (read before writing training services)
+- `backend/app/modules/lims/models.py`                  (read before writing lims services)
+- `backend/app/modules/env_monitoring/models.py`        (read before writing env_monitoring services)
+- `backend/app/core/esig/service.py`                    (ESignatureService.sign() signature)
+- `backend/app/core/audit/service.py`                   (AuditService.log() signature)
 
 ---
 
@@ -141,16 +181,17 @@ No module can advance to FUNCTIONAL until services.py is written.
 
 ```
 Read these files before touching anything:
-1. .cursorrules
-2. BUILDING_RULES.md
-3. TASK_QUEUE.md
-4. registry.json
+1. CURSOR_HANDOVER.md   (most important — has exact next steps)
+2. .cursorrules
+3. BUILDING_RULES.md
+4. TASK_QUEUE.md
 
-Project root: C:\Dev\gmp-platform\  (or C:\Users\fella\OneDrive\Desktop\work\gmp-platform\ if not yet moved)
-You are working autonomously. Find the highest-priority PENDING task in TASK_QUEUE.md.
+Project root: C:\Users\fella\OneDrive\Desktop\work\gmp-platform\
+You are working autonomously. FIRST: commit the 3 untracked files (see CURSOR_HANDOVER.md Step 0).
+Then find the highest-priority PENDING task in TASK_QUEUE.md.
 Mark it IN_PROGRESS with your start timestamp. Complete it.
-Run: pytest backend/tests/test_architecture_boundaries.py -v && python chaos.py
-Both must pass. Mark DONE with 3-line summary. Commit. Move to next PENDING task.
+Run: cd backend && .\.venv\Scripts\pytest.exe tests/test_architecture_boundaries.py -v
+Both boundary tests and chaos must pass. Mark DONE with 3-line summary. Commit. Move to next task.
 If blocked: set BLOCKED status, explain why. STOP. Do not guess.
 Do not ask questions unless truly blocked. Work autonomously.
 ```
