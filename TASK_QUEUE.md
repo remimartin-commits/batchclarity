@@ -156,7 +156,8 @@
 ---
 
 ### TASK-028 [P1] — Wire all 6 module routers to their new services.py
-- **Status:** PENDING
+- **Status:** DONE — 2026-04-22
+- **Summary:** All six module routers (`qms`, `mes`, `equipment`, `training`, `lims`, `env_monitoring`) now delegate to their `services.py` layers. Extended `equipment` (status transitions, qualifications/maintenance listings, site-scoped calibration list), `lims` (specs, samples/reviews/OOS list helpers), and `env_monitoring` (location/alert-limit listings, global results filter, `record_result` uses client `sampled_at`). Training adds router-oriented assignment/completion helpers. Architecture boundary + router contract tests pass locally.
 - **Depends on:** TASK-020 through TASK-025 (all services.py must exist first)
 - **Task:** Go through router.py in each of the 6 modules. Replace any direct DB calls or
   placeholder returns with calls to the corresponding service function. Ensure every

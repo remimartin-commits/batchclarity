@@ -25,6 +25,9 @@ from app.modules.training.models import (
 )
 from app.modules.training.schemas import (
     CurriculumCreate,
+    ReadAndUnderstoodRequest,
+    TrainingAssignmentCreate,
+    TrainingCompletionCreate,
     TrainingCompletionRequest,
 )
 
@@ -367,3 +370,244 @@ async def get_overdue_count(db: AsyncSession, site_id: str) -> int:
     )
     c = await db.execute(q)
     return int(c.scalar() or 0)
+
+
+# ── Router-oriented helpers (legacy paths + listings) ─────────────────────────
+
+
+async def list_curricula_public(
+    db: AsyncSession, *, skip: int = 0, limit: int = 50
+) -> list[TrainingCurriculum]:
+    result = await db.execute(
+        select(TrainingCurriculum)
+        .where(TrainingCurriculum.is_active == True)  # noqa: E712
+        .order_by(TrainingCurriculum.name)
+        .offset(skip)
+        .limit(limit)
+    )
+    return list(result.scalars().all())
+
+
+async def get_curriculum_detail(db: AsyncSession, curriculum_id: str) -> TrainingCurriculum:
+    result = await db.execute(
+        select(TrainingCurriculum)
+        .where(TrainingCurriculum.id == curriculum_id)
+        .options(selectinload(TrainingCurriculum.items))
+    )
+    curriculum = result.scalar_one_or_none()
+    if not curriculum:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Curriculum not found."
+        )
+    return curriculum
+
+
+async def create_single_assignment(
+    db: AsyncSession,
+    data: TrainingAssignmentCreate,
+    user: User,
+    ip_address: str | None,
+) -> TrainingAssignment:
+    item_result = await db.execute(
+        select(CurriculumItem).where(CurriculumItem.id == data.curriculum_item_id)
+    )
+    if not item_result.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Curriculum item not found."
+        )
+
+    assignment = TrainingAssignment(
+        user_id=data.user_id,
+        curriculum_item_id=data.curriculum_item_id,
+        assigned_by_id=str(user.id),
+        assigned_at=_utcnow(),
+        due_date=data.due_date,
+        status="pending",
+    )
+    db.add(assignment)
+    await db.flush([assignment])
+
+    await AuditService.log(
+        db,
+        action="CREATE",
+        record_type="training_assignment",
+        record_id=assignment.id,
+        module="training",
+        human_description=f"Training assignment created for user {data.user_id}",
+        user_id=str(user.id),
+        username=user.username,
+        full_name=user.full_name,
+        ip_address=ip_address,
+    )
+    await db.commit()
+    await db.refresh(assignment)
+    return assignment
+
+
+async def list_my_assignments(
+    db: AsyncSession,
+    user_id: str,
+    status_filter: str | None,
+) -> list[TrainingAssignment]:
+    query = select(TrainingAssignment).where(TrainingAssignment.user_id == user_id)
+    if status_filter:
+        query = query.where(TrainingAssignment.status == status_filter)
+    result = await db.execute(query.order_by(TrainingAssignment.due_date))
+    return list(result.scalars().all())
+
+
+async def list_assignments_unscoped(
+    db: AsyncSession,
+    *,
+    user_id: str | None,
+    status_filter: str | None,
+    skip: int,
+    limit: int,
+) -> list[TrainingAssignment]:
+    query = select(TrainingAssignment)
+    if user_id:
+        query = query.where(TrainingAssignment.user_id == user_id)
+    if status_filter:
+        query = query.where(TrainingAssignment.status == status_filter)
+    result = await db.execute(
+        query.order_by(TrainingAssignment.due_date).offset(skip).limit(limit)
+    )
+    return list(result.scalars().all())
+
+
+async def get_assignment_by_id(
+    db: AsyncSession, assignment_id: str
+) -> TrainingAssignment:
+    result = await db.execute(select(TrainingAssignment).where(TrainingAssignment.id == assignment_id))
+    assignment = result.scalar_one_or_none()
+    if not assignment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found."
+        )
+    return assignment
+
+
+async def complete_assignment_simple(
+    db: AsyncSession,
+    assignment_id: str,
+    data: TrainingCompletionCreate,
+    user: User,
+    ip_address: str | None,
+) -> TrainingCompletion:
+    result = await db.execute(select(TrainingAssignment).where(TrainingAssignment.id == assignment_id))
+    assignment = result.scalar_one_or_none()
+    if not assignment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found."
+        )
+
+    if assignment.completion:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Assignment already completed."
+        )
+    if assignment.user_id != str(user.id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only complete your own assignments.",
+        )
+
+    item_result = await db.execute(
+        select(CurriculumItem).where(CurriculumItem.id == assignment.curriculum_item_id)
+    )
+    item = item_result.scalar_one_or_none()
+
+    now = _utcnow()
+    expires: datetime | None = None
+    if item and item.validity_period_months:
+        expires = now + timedelta(days=item.validity_period_months * 30)
+
+    completion = TrainingCompletion(
+        assignment_id=assignment_id,
+        completed_at=now,
+        completion_method=data.completion_method,
+        assessment_score=data.assessment_score,
+        passed=data.passed,
+        expires_at=expires,
+        notes=data.notes,
+    )
+    db.add(completion)
+    assignment.status = "completed" if data.passed else "pending"
+
+    await AuditService.log(
+        db,
+        action="UPDATE",
+        record_type="training_assignment",
+        record_id=assignment_id,
+        module="training",
+        human_description=(
+            f"Training assignment completed by {user.full_name} — "
+            f"{'PASSED' if data.passed else 'FAILED'}"
+        ),
+        user_id=str(user.id),
+        username=user.username,
+        full_name=user.full_name,
+        ip_address=ip_address,
+    )
+    await db.flush([completion])
+    await db.commit()
+    await db.refresh(completion)
+    return completion
+
+
+async def read_and_understood_sign_off(
+    db: AsyncSession,
+    assignment_id: str,
+    data: ReadAndUnderstoodRequest,
+    user: User,
+    ip_address: str,
+) -> dict:
+    result = await db.execute(
+        select(TrainingAssignment).where(TrainingAssignment.id == assignment_id)
+    )
+    assignment = result.scalar_one_or_none()
+    if not assignment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found."
+        )
+    if assignment.user_id != str(user.id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only acknowledge your own assignments.",
+        )
+    if assignment.completion:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Assignment already completed."
+        )
+
+    sig = await ESignatureService.sign(
+        db,
+        user_id=str(user.id),
+        password=data.password,
+        record_type="training_assignment",
+        record_id=assignment_id,
+        record_version="1.0",
+        record_data={"assignment_id": assignment_id},
+        meaning="acknowledged",
+        meaning_display="Read and Understood",
+        ip_address=ip_address,
+        comments=data.notes,
+    )
+
+    now = _utcnow()
+    completion = TrainingCompletion(
+        assignment_id=assignment_id,
+        completed_at=now,
+        completion_method="self_study",
+        passed=True,
+        signature_id=sig.id,
+        notes=data.notes,
+    )
+    db.add(completion)
+    assignment.status = "completed"
+    await db.commit()
+
+    return {
+        "signature_id": sig.id,
+        "signed_at": sig.signed_at,
+        "message": "Read & Understood recorded with electronic signature.",
+    }

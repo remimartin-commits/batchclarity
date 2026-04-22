@@ -23,6 +23,7 @@ from app.modules.env_monitoring.models import (
     MonitoringTrend,
 )
 from app.modules.env_monitoring.schemas import (
+    AlertLimitCreate,
     MonitoringLocationCreate,
     MonitoringResultCreate,
     MonitoringTrendCreate,
@@ -117,6 +118,70 @@ async def _get_location_for_site(
     return loc
 
 
+async def list_monitoring_locations(
+    db: AsyncSession,
+    *,
+    site_id: str | None = None,
+    gmp_grade: str | None = None,
+) -> list[MonitoringLocation]:
+    q = select(MonitoringLocation).where(MonitoringLocation.is_active == True)  # noqa: E712
+    if site_id:
+        q = q.where(MonitoringLocation.site_id == site_id)
+    if gmp_grade:
+        q = q.where(MonitoringLocation.gmp_grade == gmp_grade)
+    r = await db.execute(q.order_by(MonitoringLocation.code))
+    return list(r.scalars().all())
+
+
+async def set_alert_limit(
+    db: AsyncSession,
+    location_id: str,
+    data: AlertLimitCreate,
+    user: User,
+    ip_address: Optional[str],
+) -> AlertLimit:
+    res = await db.execute(
+        select(MonitoringLocation).where(MonitoringLocation.id == location_id)
+    )
+    if not res.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Monitoring location not found."
+        )
+    limit = AlertLimit(location_id=location_id, is_active=True, **data.model_dump())
+    db.add(limit)
+    await db.flush([limit])
+    await AuditService.log(
+        db,
+        action="CREATE",
+        record_type="alert_limit",
+        record_id=limit.id,
+        module="env_monitoring",
+        human_description=(
+            f"Alert limit set for location {location_id}: {data.parameter} "
+            f"AL={data.alert_limit} ACL={data.action_limit}"
+        ),
+        user_id=str(user.id),
+        username=user.username,
+        full_name=user.full_name,
+        ip_address=ip_address,
+    )
+    await db.commit()
+    await db.refresh(limit)
+    return limit
+
+
+async def get_active_alert_limits(
+    db: AsyncSession, location_id: str
+) -> list[AlertLimit]:
+    result = await db.execute(
+        select(AlertLimit).where(
+            AlertLimit.location_id == location_id,
+            AlertLimit.is_active == True,  # noqa: E712
+        )
+    )
+    return list(result.scalars().all())
+
+
 # ── Results ───────────────────────────────────────────────────────────────────
 
 
@@ -164,7 +229,7 @@ async def record_result(
         location_id=location_id,
         parameter=data.parameter,
         sampling_method=data.sampling_method,
-        sampled_at=now,
+        sampled_at=data.sampled_at,
         sampled_by_id=str(user.id),
         batch_reference=data.batch_reference,
         result_value=data.result_value,
@@ -256,6 +321,30 @@ async def list_results(
         .order_by(MonitoringResult.sampled_at.desc())
         .offset(off)
         .limit(ps)
+    )
+    return list(result.scalars().all())
+
+
+async def list_monitoring_results_global(
+    db: AsyncSession,
+    *,
+    location_id: str | None = None,
+    status_filter: str | None = None,
+    investigation_required: bool | None = None,
+    skip: int = 0,
+    limit: int = 100,
+) -> list[MonitoringResult]:
+    q = select(MonitoringResult)
+    if location_id:
+        q = q.where(MonitoringResult.location_id == location_id)
+    if status_filter:
+        q = q.where(MonitoringResult.status == status_filter)
+    if investigation_required is not None:
+        q = q.where(MonitoringResult.investigation_required == investigation_required)
+    result = await db.execute(
+        q.order_by(MonitoringResult.sampled_at.desc())
+        .offset(max(0, skip))
+        .limit(max(1, min(500, limit)))
     )
     return list(result.scalars().all())
 

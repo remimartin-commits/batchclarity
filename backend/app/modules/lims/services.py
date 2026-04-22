@@ -18,12 +18,14 @@ from sqlalchemy.orm import selectinload
 from app.core.audit.service import AuditService
 from app.core.auth.models import User
 from app.core.esig.service import ESignatureService
-from app.modules.lims.models import OOSInvestigation, Sample, TestMethod, TestResult
+from app.modules.lims.models import OOSInvestigation, Sample, Specification, TestMethod, TestResult
 from app.modules.lims.schemas import (
     OOSInvestigationCloseRequest,
     SampleCreate,
+    SpecificationCreate,
     TestResultCorrectionCreate,
     TestResultCreate,
+    TestResultReviewRequest,
 )
 
 
@@ -90,18 +92,89 @@ async def create_sample(
 async def list_samples(
     db: AsyncSession,
     *,
-    site_id: str,
+    site_id: Optional[str] = None,
     page: int = 1,
     page_size: int = 20,
     status_filter: Optional[str] = None,
+    sample_type: Optional[str] = None,
+    skip: Optional[int] = None,
+    limit: Optional[int] = None,
 ) -> list[Sample]:
+    if skip is not None and limit is not None:
+        off = max(0, skip)
+        lim = max(1, min(500, limit))
+        q = select(Sample)
+        if site_id:
+            q = q.where(Sample.site_id == site_id)
+        if status_filter:
+            q = q.where(Sample.status == status_filter)
+        if sample_type:
+            q = q.where(Sample.sample_type == sample_type)
+        q = q.order_by(Sample.created_at.desc()).offset(off).limit(lim)
+        result = await db.execute(q)
+        return list(result.scalars().all())
     ps = _clamp_page_size(page_size)
     off = _offset(page, ps)
-    q = select(Sample).where(Sample.site_id == site_id)
+    q = select(Sample)
+    if site_id:
+        q = q.where(Sample.site_id == site_id)
     if status_filter:
         q = q.where(Sample.status == status_filter)
+    if sample_type:
+        q = q.where(Sample.sample_type == sample_type)
     q = q.order_by(Sample.created_at.desc()).offset(off).limit(ps)
     result = await db.execute(q)
+    return list(result.scalars().all())
+
+
+async def get_sample_or_404(db: AsyncSession, sample_id: str) -> Sample:
+    r = await db.execute(select(Sample).where(Sample.id == sample_id))
+    s = r.scalar_one_or_none()
+    if not s:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sample not found.")
+    return s
+
+
+async def create_specification(
+    db: AsyncSession, data: SpecificationCreate, user: User, ip_address: Optional[str]
+) -> Specification:
+    existing = await db.execute(
+        select(Specification).where(Specification.spec_number == data.spec_number)
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Spec number '{data.spec_number}' already exists.",
+        )
+    spec = Specification(**data.model_dump(), status="draft")
+    db.add(spec)
+    await db.flush([spec])
+    await AuditService.log(
+        db,
+        action="CREATE",
+        record_type="specification",
+        record_id=spec.id,
+        module="lims",
+        human_description=f"Specification {data.spec_number} '{data.name}' created",
+        user_id=str(user.id),
+        username=user.username,
+        full_name=user.full_name,
+        ip_address=ip_address,
+    )
+    await db.commit()
+    await db.refresh(spec)
+    return spec
+
+
+async def list_specifications(
+    db: AsyncSession, *, skip: int = 0, limit: int = 50
+) -> list[Specification]:
+    result = await db.execute(
+        select(Specification)
+        .order_by(Specification.spec_number)
+        .offset(max(0, skip))
+        .limit(max(1, min(500, limit)))
+    )
     return list(result.scalars().all())
 
 
@@ -205,6 +278,108 @@ async def record_test_result(
     await db.commit()
     await db.refresh(result_obj)
     return result_obj
+
+
+async def list_test_results_for_sample(
+    db: AsyncSession, sample_id: str
+) -> list[TestResult]:
+    result = await db.execute(
+        select(TestResult)
+        .where(TestResult.sample_id == sample_id)
+        .order_by(TestResult.tested_at)
+    )
+    return list(result.scalars().all())
+
+
+async def review_test_result(
+    db: AsyncSession,
+    result_id: str,
+    data: TestResultReviewRequest,
+    user: User,
+    ip_address: str,
+) -> dict:
+    result_obj_q = await db.execute(select(TestResult).where(TestResult.id == result_id))
+    result_obj = result_obj_q.scalar_one_or_none()
+    if not result_obj:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Test result not found."
+        )
+
+    sig = await ESignatureService.sign(
+        db,
+        user_id=str(user.id),
+        password=data.password,
+        record_type="test_result",
+        record_id=result_id,
+        record_version="1.0",
+        record_data={"result_value": result_obj.result_value, "status": result_obj.status},
+        meaning=data.decision,
+        meaning_display=f"Result {data.decision.upper()}",
+        ip_address=ip_address,
+        comments=data.comments,
+    )
+
+    now = _utcnow()
+    result_obj.status = data.decision
+    result_obj.reviewer_id = str(user.id)
+    result_obj.reviewed_at = now
+    result_obj.review_comments = data.comments
+    result_obj.signature_id = str(sig.id)
+
+    investigation_id = None
+    if data.decision == "oos":
+        result_obj.is_oos = True
+        count_q = await db.execute(select(func.count()).select_from(OOSInvestigation))
+        count = (count_q.scalar() or 0) + 1
+        inv_number = f"OOS-{_utcnow().year}-{count:04d}"
+        investigation = OOSInvestigation(
+            investigation_number=inv_number,
+            sample_id=result_obj.sample_id,
+            initial_result_id=result_id,
+            assigned_to_id=str(user.id),
+            status="open",
+        )
+        db.add(investigation)
+        await db.flush([investigation])
+        result_obj.linked_investigation_id = investigation.id
+        investigation_id = investigation.id
+        await AuditService.log(
+            db,
+            action="CREATE",
+            record_type="oos_investigation",
+            record_id=investigation.id,
+            module="lims",
+            human_description=(
+                f"OOS investigation {inv_number} auto-created for result {result_id}"
+            ),
+            user_id=str(user.id),
+            username=user.username,
+            full_name=user.full_name,
+            ip_address=ip_address,
+        )
+
+    await db.commit()
+    return {
+        "signature_id": sig.id,
+        "decision": data.decision,
+        "oos_investigation_id": investigation_id,
+    }
+
+
+async def list_oos_investigations(
+    db: AsyncSession,
+    *,
+    status_filter: str | None = None,
+    skip: int = 0,
+    limit: int = 50,
+) -> list[OOSInvestigation]:
+    query = select(OOSInvestigation)
+    if status_filter:
+        query = query.where(OOSInvestigation.status == status_filter)
+    result = await db.execute(
+        query.order_by(OOSInvestigation.created_at.desc()).offset(skip).limit(limit)
+    )
+    return list(result.scalars().all())
 
 
 async def correct_test_result(
