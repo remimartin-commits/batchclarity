@@ -1,115 +1,148 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { trainingApi } from "@/lib/api";
+import ESignatureModal from "@/components/shared/ESignatureModal";
+import { toast } from "@/stores/toastStore";
 
 export default function TrainingList() {
-  const navigate = useNavigate();
-  const qc = useQueryClient();
-  const [statusFilter, setStatusFilter] = useState("");
-  const [showAssign, setShowAssign] = useState(false);
-  const [form, setForm] = useState({ user_id: "", curriculum_item_id: "", due_date: "" });
+  const queryClient = useQueryClient();
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [signAssignmentId, setSignAssignmentId] = useState<string | null>(null);
 
   const { data: assignments = [], isLoading } = useQuery({
-    queryKey: ["training-assignments", statusFilter],
-    queryFn: () => trainingApi.listAssignments(statusFilter ? { status_filter: statusFilter } : {}),
+    queryKey: ["training-my-assignments"],
+    queryFn: trainingApi.myAssignments,
   });
-  const { data: curricula = [] } = useQuery({
-    queryKey: ["training-curricula"],
-    queryFn: trainingApi.listCurricula,
-  });
-  const items = (curricula as any[]).flatMap((c: any) =>
-    (c.items || []).map((item: any) => ({ ...item, curriculum_name: c.name }))
-  );
 
-  const assignMutation = useMutation({
-    mutationFn: () =>
-      trainingApi.createAssignment({
-        user_id: form.user_id,
-        curriculum_item_id: form.curriculum_item_id,
-        due_date: form.due_date || undefined,
-      }),
+  const completeMutation = useMutation({
+    mutationFn: async (payload: { assignmentId: string; password: string; comments: string }) => {
+      await trainingApi.readAndUnderstood(payload.assignmentId, {
+        password: payload.password,
+        notes: payload.comments || "Read and understood acknowledgement.",
+      });
+    },
     onSuccess: async () => {
-      setShowAssign(false);
-      setForm({ user_id: "", curriculum_item_id: "", due_date: "" });
-      await qc.invalidateQueries({ queryKey: ["training-assignments"] });
+      toast.success("Training assignment completed with e-signature.");
+      setSignAssignmentId(null);
+      await queryClient.invalidateQueries({ queryKey: ["training-my-assignments"] });
+    },
+    onError: (error: any) => {
+      const detail = error?.response?.data?.detail;
+      toast.error(typeof detail === "string" ? detail : "Assignment completion failed.");
     },
   });
 
+  const visibleAssignments = (assignments as any[]).filter((a: any) =>
+    statusFilter === "all" ? true : a.status === statusFilter
+  );
+
   return (
     <div className="p-8 space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Training</h1>
-          <p className="text-gray-500 text-sm mt-1">Assignments and completion tracking.</p>
-        </div>
-        <button className="bg-brand-600 text-white px-4 py-2 rounded" onClick={() => setShowAssign(true)}>
-          + Assign Training
-        </button>
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">My Assignments</h1>
+        <p className="text-gray-500 text-sm mt-1">
+          Complete pending items using electronic signature (read_and_understood).
+        </p>
       </div>
 
       <div className="flex gap-2 flex-wrap">
-        {["", "pending", "in_progress", "completed", "overdue", "waived"].map((s) => (
+        {["all", "pending", "overdue", "completed"].map((s) => (
           <button
             key={s}
             onClick={() => setStatusFilter(s)}
-            className={`px-3 py-1.5 border rounded text-sm ${statusFilter === s ? "bg-brand-600 text-white" : ""}`}
+            className={`px-3 py-1.5 border rounded text-sm ${
+              statusFilter === s ? "bg-brand-600 text-white border-brand-600" : "bg-white"
+            }`}
           >
-            {s || "all"}
+            {s}
           </button>
         ))}
       </div>
 
       <div className="bg-white rounded-xl shadow-sm overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b">
+          <thead className="bg-gray-50 border-b border-gray-100">
             <tr>
-              {["Assignment ID", "User ID", "Curriculum Item", "Due Date", "Status"].map((h) => (
-                <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">{h}</th>
+              {["Assignment", "Curriculum Item", "Due Date", "Status", "Action"].map((h) => (
+                <th
+                  key={h}
+                  className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide"
+                >
+                  {h}
+                </th>
               ))}
             </tr>
           </thead>
-          <tbody>
+          <tbody className="divide-y divide-gray-50">
             {isLoading ? (
-              <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">Loading...</td></tr>
-            ) : (assignments as any[]).length === 0 ? (
-              <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">No assignments.</td></tr>
+              <tr>
+                <td colSpan={5} className="px-4 py-8 text-center text-gray-400">
+                  Loading assignments...
+                </td>
+              </tr>
+            ) : visibleAssignments.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="px-4 py-8 text-center text-gray-400">
+                  No assignments in this status.
+                </td>
+              </tr>
             ) : (
-              (assignments as any[]).map((a: any) => (
-                <tr key={a.id} className="border-b hover:bg-gray-50 cursor-pointer" onClick={() => navigate(`/training/${a.id}`)}>
-                  <td className="px-4 py-3 text-xs font-mono">{a.id}</td>
-                  <td className="px-4 py-3 text-xs font-mono">{a.user_id}</td>
-                  <td className="px-4 py-3 text-xs font-mono">{a.curriculum_item_id}</td>
-                  <td className="px-4 py-3">{a.due_date ? new Date(a.due_date).toLocaleDateString() : "—"}</td>
-                  <td className="px-4 py-3">{a.status}</td>
-                </tr>
-              ))
+              visibleAssignments.map((assignment: any) => {
+                const isLocked = assignment.status === "completed";
+                return (
+                  <tr key={assignment.id} className={isLocked ? "bg-gray-50" : ""}>
+                    <td className="px-4 py-3 font-mono text-xs text-gray-600">{assignment.id}</td>
+                    <td className="px-4 py-3 text-gray-700">
+                      {assignment.curriculum_item_id ?? "—"}
+                    </td>
+                    <td className="px-4 py-3 text-gray-600">
+                      {assignment.due_date
+                        ? new Date(assignment.due_date).toLocaleDateString()
+                        : "—"}
+                    </td>
+                    <td className="px-4 py-3">{assignment.status}</td>
+                    <td className="px-4 py-3">
+                      {isLocked ? (
+                        <span className="text-xs px-2 py-1 rounded bg-gray-200 text-gray-600">
+                          Locked
+                        </span>
+                      ) : assignment.status === "pending" || assignment.status === "overdue" ? (
+                        <button
+                          className="text-xs font-semibold px-3 py-1.5 rounded bg-brand-600 text-white hover:bg-brand-700"
+                          onClick={() => setSignAssignmentId(assignment.id)}
+                        >
+                          Complete
+                        </button>
+                      ) : (
+                        <span className="text-xs text-gray-400">—</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
       </div>
 
-      {showAssign && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl w-full max-w-md p-6 space-y-3">
-            <h2 className="text-lg font-semibold">Create Assignment</h2>
-            <input className="border rounded px-3 py-2 w-full" placeholder="User ID" value={form.user_id} onChange={(e) => setForm((s) => ({ ...s, user_id: e.target.value }))} />
-            <select className="border rounded px-3 py-2 w-full" value={form.curriculum_item_id} onChange={(e) => setForm((s) => ({ ...s, curriculum_item_id: e.target.value }))}>
-              <option value="">Select curriculum item</option>
-              {items.map((it: any) => (
-                <option key={it.id} value={it.id}>{it.curriculum_name} - {it.title}</option>
-              ))}
-            </select>
-            <input type="datetime-local" className="border rounded px-3 py-2 w-full" value={form.due_date} onChange={(e) => setForm((s) => ({ ...s, due_date: e.target.value }))} />
-            <div className="flex justify-end gap-2">
-              <button className="px-4 py-2 border rounded" onClick={() => setShowAssign(false)}>Cancel</button>
-              <button className="px-4 py-2 bg-brand-600 text-white rounded disabled:opacity-50" disabled={assignMutation.isPending || !form.user_id || !form.curriculum_item_id} onClick={() => assignMutation.mutate()}>
-                {assignMutation.isPending ? "Assigning..." : "Assign"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ESignatureModal
+        isOpen={Boolean(signAssignmentId)}
+        isLoading={completeMutation.isPending}
+        title="Complete Training Assignment"
+        description="Apply your signature as read_and_understood to complete this assignment."
+        meaning="read_and_understood"
+        availableMeanings={["read_and_understood"]}
+        onClose={() => setSignAssignmentId(null)}
+        onConfirm={async ({ password, comments }) => {
+          if (!signAssignmentId) return;
+          await completeMutation.mutateAsync({
+            assignmentId: signAssignmentId,
+            password,
+            comments,
+          });
+        }}
+      />
     </div>
   );
 }
+
