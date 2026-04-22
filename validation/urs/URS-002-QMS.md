@@ -224,3 +224,14 @@ All QMS records shall be:
 | Version | Date | Author | Summary |
 |---|---|---|---|
 | 1.0 | 2026-04-20 | GMP Platform Project Team | Initial draft |
+
+---
+
+## 10. Traceability to Module Features
+
+| Requirement Area | Feature / Endpoint / UI |
+|---|---|
+| CAPA lifecycle | `/api/v1/qms/capas`, `/api/v1/qms/capas/{id}/sign`, frontend CAPA list/detail |
+| Deviation workflow | `/api/v1/qms/deviations`, transition endpoints, frontend deviation list/detail |
+| Change control workflow | `/api/v1/qms/change-controls` and transition/sign routes |
+| Notifications | rule-based overdue CAPA checks and notification service integration |

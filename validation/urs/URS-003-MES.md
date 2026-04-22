@@ -171,3 +171,15 @@ The MES is designated a **GMP-critical system** under ICH Q10. All batch records
 | Version | Date | Author | Summary |
 |---|---|---|---|
 | 1.0 | 2026-04-20 | GMP Platform Project Team | Initial draft |
+
+---
+
+## 10. Traceability to Module Features
+
+| Requirement Area | Feature / Endpoint / UI |
+|---|---|
+| Product and MBR controls | `/api/v1/mes/products`, `/api/v1/mes/mbrs`, MBR sign endpoint |
+| EBR execution | `/api/v1/mes/batch-records`, step execution endpoint, frontend batch detail |
+| Anti-backfill | server-side step execution timestamps + executed step lock behavior |
+| Batch release | `/api/v1/mes/batch-records/{id}/release` with e-signature requirement |
+| Scheduler controls | stale-batch checks and rule-based notification hook |
