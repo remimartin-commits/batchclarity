@@ -124,21 +124,21 @@
     },
 
     "lims": {
-      "tier": "SKELETON",
+      "tier": "FUNCTIONAL",
       "gmp_name": "Laboratory Information Management System",
       "ai_analogue": "Information Purity Engine",
       "ai_analogue_function": "Samples data streams. Verifies provenance of information. Detects distortion, manipulation, or contamination. Quarantines outputs that fail verification. Every data point has a chain of custody. OOS = out-of-specification = detected anomaly requiring investigation.",
       "path_b_capability": "Sample = data input under examination. TestResult = verification outcome (append-only, corrections reference originals). OOSInvestigation = anomaly investigation triggered automatically on failure. Specification = what 'pure' looks like for this data type.",
       "path_b_priority": "HIGHEST — this is the module that makes the entire system trustworthy. Without verified information provenance, all other modules operate on potentially corrupted inputs.",
-      "notes": "TestMethod, Spec, Sample, TestResult, OOSInvestigation. Append-only TestResult in place. OOS auto-trigger not wired.",
+      "notes": "TestMethod, Spec, Sample, TestResult, OOSInvestigation. Append-only TestResult in place. OOS auto-trigger wired to QMS deviation.",
       "features": {
-        "test_methods":      "SKELETON",
-        "specifications":    "SKELETON",
-        "samples":           "SKELETON",
-        "test_results":      "SKELETON",
-        "oos_investigation": "SKELETON"
+        "test_methods":      "FUNCTIONAL",
+        "specifications":    "FUNCTIONAL",
+        "samples":           "FUNCTIONAL",
+        "test_results":      "FUNCTIONAL",
+        "oos_investigation": "FUNCTIONAL"
       },
-      "blocking": ["OOS auto-trigger on fail result not implemented"],
+      "blocking": [],
       "validated": false
     },
 
