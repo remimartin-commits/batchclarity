@@ -494,7 +494,11 @@ async def complete_assignment_simple(
     user: User,
     ip_address: str | None,
 ) -> TrainingCompletion:
-    result = await db.execute(select(TrainingAssignment).where(TrainingAssignment.id == assignment_id))
+    result = await db.execute(
+        select(TrainingAssignment)
+        .where(TrainingAssignment.id == assignment_id)
+        .options(selectinload(TrainingAssignment.completion))
+    )
     assignment = result.scalar_one_or_none()
     if not assignment:
         raise HTTPException(
@@ -562,7 +566,9 @@ async def read_and_understood_sign_off(
     ip_address: str,
 ) -> dict:
     result = await db.execute(
-        select(TrainingAssignment).where(TrainingAssignment.id == assignment_id)
+        select(TrainingAssignment)
+        .where(TrainingAssignment.id == assignment_id)
+        .options(selectinload(TrainingAssignment.completion))
     )
     assignment = result.scalar_one_or_none()
     if not assignment:

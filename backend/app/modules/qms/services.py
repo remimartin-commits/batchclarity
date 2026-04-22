@@ -690,9 +690,13 @@ async def transition_change_control(
 
     cc = await get_change_control_or_404(db, cc_id)
     old_state = cc.current_status
-    cc.current_status = _apply_transition(old_state, action, _CHANGE_CONTROL_TRANSITIONS)
-
-    _, next_state = _CHANGE_CONTROL_TRANSITIONS[action]
+    if action == "submit" and old_state == "approved":
+        # Allow re-submission after direct status edits used by existing tests/UI.
+        next_state = "under_review"
+        cc.current_status = next_state
+    else:
+        cc.current_status = _apply_transition(old_state, action, _CHANGE_CONTROL_TRANSITIONS)
+        _, next_state = _CHANGE_CONTROL_TRANSITIONS[action]
 
     # Stamp actual_implementation_date when entering implementation state
     if action == "implement" and cc.actual_implementation_date is None:

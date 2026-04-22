@@ -26,6 +26,7 @@ from app.core.auth.service import AuthService
 from app.core.database import Base, get_db
 from app.core.documents.models import Document, DocumentType, DocumentVersion
 from app.core.documents.router import router as documents_router
+from app.core.esig.models import ElectronicSignature
 from app.core.workflow.models import WorkflowDefinition, WorkflowInstance
 from app.modules.equipment.models import CalibrationRecord, Equipment, MaintenanceRecord, QualificationRecord
 from app.modules.equipment.router import router as equipment_router
@@ -63,6 +64,7 @@ async def session_maker(tmp_path: Path):
                     DocumentType.__table__,
                     Document.__table__,
                     DocumentVersion.__table__,
+                    ElectronicSignature.__table__,
                     TrainingCurriculum.__table__,
                     CurriculumItem.__table__,
                     TrainingAssignment.__table__,

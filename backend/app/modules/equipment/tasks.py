@@ -19,14 +19,29 @@ async def check_calibration_due() -> dict[str, int]:
         )
         rows = result.scalars().all()
 
-    overdue = 0
-    due_soon = 0
-    for row in rows:
-        due = row.next_calibration_due
-        if due is None:
-            continue
-        if due < now:
-            overdue += 1
-        elif due <= soon:
-            due_soon += 1
+        overdue = 0
+        due_soon = 0
+        changed = False
+        for row in rows:
+            due = row.next_calibration_due
+            if due is None:
+                continue
+            # SQLite often returns naive datetimes; normalize for stable comparisons.
+            if due.tzinfo is None:
+                due = due.replace(tzinfo=timezone.utc)
+            if due < now:
+                overdue += 1
+                if not row.is_overdue:
+                    row.is_overdue = True
+                    changed = True
+            else:
+                if row.is_overdue:
+                    row.is_overdue = False
+                    changed = True
+                if due <= soon:
+                    due_soon += 1
+
+        if changed:
+            await session.commit()
+
     return {"overdue": overdue, "due_soon": due_soon}

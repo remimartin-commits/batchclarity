@@ -21,14 +21,25 @@ async def check_overdue_training() -> dict[str, int]:
         )
         rows = result.scalars().all()
 
-    overdue = 0
-    reminders = 0
-    for row in rows:
-        due = row.due_date
-        if due is None:
-            continue
-        if due < now:
-            overdue += 1
-        elif due <= reminder_window:
-            reminders += 1
+        overdue = 0
+        reminders = 0
+        changed = False
+        for row in rows:
+            due = row.due_date
+            if due is None:
+                continue
+            # SQLite often returns naive datetimes; normalize for stable comparisons.
+            if due.tzinfo is None:
+                due = due.replace(tzinfo=timezone.utc)
+            if due < now:
+                overdue += 1
+                if row.status != "overdue":
+                    row.status = "overdue"
+                    changed = True
+            elif due <= reminder_window:
+                reminders += 1
+
+        if changed:
+            await session.commit()
+
     return {"overdue": overdue, "reminders": reminders}
