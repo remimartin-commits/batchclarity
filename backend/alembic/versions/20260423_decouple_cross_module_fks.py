@@ -26,6 +26,11 @@ def _drop_fk_if_exists(table: str, constraint: str) -> None:
 
 
 def upgrade() -> None:
+    # Widen alembic_version.version_num first — default VARCHAR(32) is too
+    # short for revision IDs like this one (35 chars). Must run before Alembic
+    # writes the new version_num at the end of this migration.
+    op.execute("ALTER TABLE alembic_version ALTER COLUMN version_num TYPE VARCHAR(64)")
+
     # MES -> QMS
     _drop_fk_if_exists("batch_record_steps", "batch_record_steps_deviation_id_fkey")
     op.alter_column("batch_record_steps", "deviation_id", new_column_name="linked_deviation_id")

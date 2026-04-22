@@ -1,10 +1,14 @@
+from importlib.metadata import version, PackageNotFoundError
+
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional
+
 try:
     _app_version = version("app-core")
 except PackageNotFoundError:
     _app_version = "0.1.0"
+
 
 class Settings(BaseSettings):
     # Application
