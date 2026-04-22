@@ -108,16 +108,16 @@
     },
 
     "training": {
-      "tier": "SKELETON",
+      "tier": "FUNCTIONAL",
       "gmp_name": "Training & Competency Management",
       "ai_analogue": "Capability Development & Certification",
       "ai_analogue_function": "Ensures sub-components have demonstrated competency before being trusted with tasks. Read-and-understood e-signature = agent has acknowledged constraints. Tracks skill currency — an agent that hasn't been re-calibrated recently loses trusted status.",
       "path_b_capability": "Curriculum = capability specification. Assignment = required learning task. Completion with e-sig = verified acknowledgement. Overdue = capability expired.",
       "notes": "Assignment status=overdue from hook; SQL counts; notifications.",
       "features": {
-        "curriculum":   "SKELETON",
-        "assignments":  "SKELETON",
-        "completions":  "SKELETON"
+        "curriculum":   "FUNCTIONAL",
+        "assignments":  "FUNCTIONAL",
+        "completions":  "FUNCTIONAL"
       },
       "blocking": [],
       "validated": false

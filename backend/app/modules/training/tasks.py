@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 
 from app.core.database import async_session_factory
+from app.core.notify.service import NotificationService
 from app.modules.training.models import TrainingAssignment
 
 
@@ -39,7 +40,14 @@ async def check_overdue_training() -> dict[str, int]:
             elif due <= reminder_window:
                 reminders += 1
 
-        if changed:
+        if overdue > 0 or reminders > 0:
+            await NotificationService.send_rule_based(
+                session,
+                "training_assignments_overdue",
+                {"overdue": overdue, "reminders": reminders},
+            )
+
+        if changed or overdue > 0 or reminders > 0:
             await session.commit()
 
     return {"overdue": overdue, "reminders": reminders}
