@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { mesApi } from "@/lib/api";
 import { BatchRecord, MasterBatchRecord } from "@/types";
@@ -128,6 +129,7 @@ function NewBatchModal({
 }
 
 export default function BatchRecordList() {
+  const navigate = useNavigate();
   const [showNew, setShowNew] = useState(false);
   const [statusFilter, setStatusFilter] = useState("");
 
@@ -180,7 +182,7 @@ export default function BatchRecordList() {
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b border-gray-100">
             <tr>
-              {["Batch #", "MBR Ref", "Batch Size", "Started", "Status", "Decision"].map((h) => (
+              {["Status", "Product", "Batch Number", "Initiated By", "Started At"].map((h) => (
                 <th
                   key={h}
                   className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide"
@@ -193,36 +195,23 @@ export default function BatchRecordList() {
           <tbody className="divide-y divide-gray-50">
             {isLoading ? (
               <tr>
-                <td colSpan={6} className="text-center py-8 text-gray-400">
+                <td colSpan={5} className="text-center py-8 text-gray-400">
                   Loading batch records…
                 </td>
               </tr>
             ) : batches.length === 0 ? (
               <tr>
-                <td colSpan={6} className="text-center py-8 text-gray-400">
+                <td colSpan={5} className="text-center py-8 text-gray-400">
                   No batch records found.
                 </td>
               </tr>
             ) : (
               batches.map((b) => (
-                <tr key={b.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 font-mono text-brand-600 font-medium">
-                    {b.batch_number}
-                  </td>
-                  <td className="px-4 py-3 text-gray-600 font-mono text-xs">
-                    {/* mbr_id short ref */}
-                    {b.mbr_id?.slice(0, 8)}…
-                  </td>
-                  <td className="px-4 py-3 text-gray-700">
-                    {b.batch_size} {b.batch_size_unit}
-                  </td>
-                  <td className="px-4 py-3 text-gray-500 text-xs">
-                    {b.started_at
-                      ? new Date(b.started_at).toLocaleDateString()
-                      : b.created_at
-                      ? new Date(b.created_at).toLocaleDateString()
-                      : "—"}
-                  </td>
+                <tr
+                  key={b.id}
+                  className="hover:bg-gray-50 cursor-pointer"
+                  onClick={() => navigate(`/mes/batch-records/${b.id}`)}
+                >
                   <td className="px-4 py-3">
                     <span
                       className={`text-xs px-2 py-0.5 rounded-full font-medium ${
@@ -232,8 +221,21 @@ export default function BatchRecordList() {
                       {b.status.replace(/_/g, " ")}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-gray-500 text-xs capitalize">
-                    {b.release_decision ?? "—"}
+                  <td className="px-4 py-3 text-gray-700">{b.product_name ?? b.product_id ?? "—"}</td>
+                  <td className="px-4 py-3 font-mono text-brand-600 font-medium">
+                    {b.batch_number}
+                  </td>
+                  <td className="px-4 py-3 text-gray-600">
+                    {b.initiated_by ?? b.executed_by_id ?? "—"}
+                  </td>
+                  <td className="px-4 py-3 text-gray-500 text-xs">
+                    {b.actual_start
+                      ? new Date(b.actual_start).toLocaleString()
+                      : b.started_at
+                      ? new Date(b.started_at).toLocaleString()
+                      : b.created_at
+                      ? new Date(b.created_at).toLocaleString()
+                      : "—"}
                   </td>
                 </tr>
               ))

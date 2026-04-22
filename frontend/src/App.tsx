@@ -20,6 +20,7 @@ import ChangeControlDetail from "@/pages/qms/ChangeControlDetail";
 
 // MES
 import BatchRecordList from "@/pages/mes/BatchRecordList";
+import BatchRecordDetail from "@/pages/mes/BatchRecordDetail";
 
 // Equipment
 import EquipmentList from "@/pages/equipment/EquipmentList";
@@ -134,6 +135,7 @@ export default function App() {
 
         {/* MES */}
         <Route path="mes/batch-records" element={<BatchRecordList />} />
+        <Route path="mes/batch-records/:id" element={<BatchRecordDetail />} />
 
         {/* Equipment */}
         <Route path="equipment" element={<EquipmentList />} />
