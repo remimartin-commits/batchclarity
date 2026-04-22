@@ -11,8 +11,8 @@ import UsersAdmin from "@/pages/admin/UsersAdmin";
 import RolesAdmin from "@/pages/admin/RolesAdmin";
 
 // QMS
-import CapaList from "@/pages/qms/CapaList";
-import CapaDetail from "@/pages/qms/CapaDetail";
+import CAPAList from "@/pages/qms/CAPAList";
+import CAPADetail from "@/pages/qms/CAPADetail";
 import DeviationList from "@/pages/qms/DeviationList";
 import DeviationDetail from "@/pages/qms/DeviationDetail";
 import ChangeControlList from "@/pages/qms/ChangeControlList";
@@ -125,8 +125,8 @@ export default function App() {
           <Route index element={<Dashboard />} />
 
         {/* QMS */}
-        <Route path="qms/capas" element={<CapaList />} />
-        <Route path="qms/capas/:id" element={<CapaDetail />} />
+        <Route path="qms/capas" element={<CAPAList />} />
+        <Route path="qms/capas/:id" element={<CAPADetail />} />
         <Route path="qms/deviations" element={<DeviationList />} />
         <Route path="qms/deviations/:id" element={<DeviationDetail />} />
         <Route path="qms/change-controls" element={<ChangeControlList />} />
