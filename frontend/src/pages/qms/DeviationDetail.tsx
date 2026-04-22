@@ -2,246 +2,146 @@ import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { qmsApi } from "@/lib/api";
+import ESignatureModal from "@/components/shared/ESignatureModal";
+import { toast } from "@/stores/toastStore";
 
-type DeviationRecord = {
-  id: string;
-  deviation_number: string;
-  title: string;
-  deviation_type: string;
-  category: string;
-  description: string;
-  risk_level: string;
-  current_status: string;
-  detection_date: string;
-  batch_number?: string | null;
-  immediate_action?: string | null;
-  root_cause?: string | null;
-  linked_capa_id?: string | null;
-  created_at: string;
-};
+type TransitionAction = "submit" | "approve" | "close";
 
 export default function DeviationDetail() {
   const { id = "" } = useParams();
   const navigate = useNavigate();
-  const qc = useQueryClient();
-  const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
-  const [password, setPassword] = useState("");
-  const [meaning, setMeaning] = useState("reviewed");
-  const [comments, setComments] = useState("");
-  const [form, setForm] = useState({
-    description: "",
-    immediate_action: "",
-    root_cause: "",
-  });
+  const queryClient = useQueryClient();
+  const [pendingAction, setPendingAction] = useState<TransitionAction | null>(null);
 
-  const { data, isLoading } = useQuery<DeviationRecord>({
+  const { data: deviation, isLoading } = useQuery({
     queryKey: ["qms-deviation", id],
     queryFn: () => qmsApi.getDeviation(id),
     enabled: Boolean(id),
   });
 
-  const canTransition = useMemo(() => {
-    const s = data?.current_status;
-    return {
-      submit: s === "draft",
-      approve: s === "under_review",
-      close: s === "approved",
-    };
-  }, [data?.current_status]);
-
-  const updateMutation = useMutation({
-    mutationFn: () =>
-      qmsApi.updateDeviation(id, {
-        description: form.description || undefined,
-        immediate_action: form.immediate_action || undefined,
-        root_cause: form.root_cause || undefined,
-      }),
-    onSuccess: async () => {
-      setError("");
-      setMessage("Deviation updated.");
-      await qc.invalidateQueries({ queryKey: ["qms-deviation", id] });
-      await qc.invalidateQueries({ queryKey: ["deviations"] });
-    },
-    onError: (err: any) => {
-      const d = err?.response?.data?.detail;
-      setError(Array.isArray(d) ? d.join("; ") : d || "Failed to update deviation.");
-    },
-  });
-
-  const signMutation = useMutation({
-    mutationFn: () => qmsApi.signDeviation(id, { password, meaning, comments }),
-    onSuccess: async () => {
-      setError("");
-      setMessage("Electronic signature applied.");
-      setPassword("");
-      setComments("");
-      await qc.invalidateQueries({ queryKey: ["qms-deviation", id] });
-    },
-    onError: (err: any) => {
-      const d = err?.response?.data?.detail;
-      setError(Array.isArray(d) ? d.join("; ") : d || "Failed to sign deviation.");
-    },
-  });
-
   const transitionMutation = useMutation({
-    mutationFn: (action: "submit" | "approve" | "close") =>
-      qmsApi.transitionDeviation(id, action),
-    onSuccess: async () => {
-      setError("");
-      setMessage("Status transition completed.");
-      await qc.invalidateQueries({ queryKey: ["qms-deviation", id] });
-      await qc.invalidateQueries({ queryKey: ["deviations"] });
+    mutationFn: async (payload: { action: TransitionAction; password: string; comments: string }) => {
+      const meaningMap: Record<TransitionAction, string> = {
+        submit: "reviewed",
+        approve: "approved",
+        close: "closed",
+      };
+      await qmsApi.signDeviation(id, {
+        password: payload.password,
+        meaning: meaningMap[payload.action],
+        comments: payload.comments,
+      });
+      return qmsApi.transitionDeviation(id, payload.action);
     },
-    onError: (err: any) => {
-      const d = err?.response?.data?.detail;
-      setError(Array.isArray(d) ? d.join("; ") : d || "Transition failed.");
+    onSuccess: async () => {
+      toast.success("Deviation transition completed.");
+      setPendingAction(null);
+      await queryClient.invalidateQueries({ queryKey: ["qms-deviation", id] });
+      await queryClient.invalidateQueries({ queryKey: ["deviations"] });
+    },
+    onError: (error: any) => {
+      const detail = error?.response?.data?.detail;
+      toast.error(typeof detail === "string" ? detail : "Transition failed.");
     },
   });
 
-  if (isLoading) {
-    return <div className="p-8 text-gray-500">Loading deviation...</div>;
-  }
-  if (!data) {
-    return (
-      <div className="p-8">
-        <div className="text-gray-500 mb-3">Deviation not found.</div>
-        <button className="text-brand-600" onClick={() => navigate("/qms/deviations")}>
-          Back to list
-        </button>
-      </div>
-    );
-  }
+  const availableActions = useMemo(() => {
+    const status = deviation?.current_status;
+    if (status === "draft") return ["submit"] as TransitionAction[];
+    if (status === "under_review") return ["approve"] as TransitionAction[];
+    if (status === "approved") return ["close"] as TransitionAction[];
+    return [] as TransitionAction[];
+  }, [deviation?.current_status]);
+
+  const limsOriginHint = useMemo(() => {
+    const description: string = deviation?.description ?? "";
+    return description.includes("Sample ID:") || description.includes("Result ID:");
+  }, [deviation?.description]);
+
+  if (isLoading) return <div className="p-8 text-gray-500">Loading deviation...</div>;
+  if (!deviation) return <div className="p-8 text-gray-500">Deviation not found.</div>;
 
   return (
-    <div className="p-8 space-y-6 max-w-4xl">
+    <div className="p-8 max-w-4xl space-y-5">
       <div className="text-sm text-gray-500">
         <Link to="/qms/deviations" className="text-brand-600 hover:underline">
           Deviations
         </Link>{" "}
-        / {data.deviation_number}
+        / {deviation.deviation_number}
       </div>
 
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">{data.title}</h1>
-        <p className="text-sm text-gray-500 mt-1">
-          {data.deviation_number} • {data.deviation_type} • {data.category} • status:{" "}
-          {data.current_status.replace(/_/g, " ")}
+      <div className="bg-white rounded-xl shadow-sm p-6 space-y-2">
+        <h1 className="text-2xl font-bold text-gray-900">{deviation.title}</h1>
+        <p className="text-sm text-gray-500">
+          Status: {deviation.current_status} • Site ID: {deviation.site_id ?? "—"} • Created:{" "}
+          {deviation.created_at ? new Date(deviation.created_at).toLocaleString() : "—"}
         </p>
+        <p className="text-sm text-gray-700 whitespace-pre-wrap">{deviation.description}</p>
       </div>
 
-      {error && <div className="p-3 rounded border border-red-200 bg-red-50 text-red-700">{error}</div>}
-      {message && (
-        <div className="p-3 rounded border border-green-200 bg-green-50 text-green-700">{message}</div>
+      {limsOriginHint && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
+          Originating OOS investigation detected from LIMS-linked description.
+          <Link
+            to="/lims/samples"
+            className="ml-1 text-brand-600 hover:text-brand-700 font-medium"
+          >
+            Open LIMS samples
+          </Link>
+        </div>
       )}
 
-      <section className="bg-white rounded-xl shadow-sm p-6 space-y-4">
-        <h2 className="font-semibold">Record Details</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-          <div><span className="text-gray-500">Risk:</span> {data.risk_level}</div>
-          <div><span className="text-gray-500">Detection date:</span> {new Date(data.detection_date).toLocaleString()}</div>
-          <div><span className="text-gray-500">Batch:</span> {data.batch_number || "—"}</div>
-          <div><span className="text-gray-500">Created:</span> {new Date(data.created_at).toLocaleString()}</div>
-        </div>
-        <div>
-          <p className="text-gray-500 text-sm mb-1">Description</p>
-          <p className="text-sm text-gray-900 whitespace-pre-wrap">{data.description}</p>
-        </div>
-      </section>
-
-      <section className="bg-white rounded-xl shadow-sm p-6 space-y-3">
-        <h2 className="font-semibold">Update Investigation Fields</h2>
-        <textarea
-          className="w-full border rounded p-2 text-sm"
-          rows={3}
-          placeholder={data.description}
-          value={form.description}
-          onChange={(e) => setForm((s) => ({ ...s, description: e.target.value }))}
-        />
-        <textarea
-          className="w-full border rounded p-2 text-sm"
-          rows={2}
-          placeholder={data.immediate_action || "Immediate action"}
-          value={form.immediate_action}
-          onChange={(e) => setForm((s) => ({ ...s, immediate_action: e.target.value }))}
-        />
-        <textarea
-          className="w-full border rounded p-2 text-sm"
-          rows={2}
-          placeholder={data.root_cause || "Root cause"}
-          value={form.root_cause}
-          onChange={(e) => setForm((s) => ({ ...s, root_cause: e.target.value }))}
-        />
-        <button
-          className="px-4 py-2 rounded bg-brand-600 text-white disabled:opacity-50"
-          disabled={updateMutation.isPending}
-          onClick={() => updateMutation.mutate()}
-        >
-          {updateMutation.isPending ? "Saving..." : "Save Updates"}
-        </button>
-      </section>
-
-      <section className="bg-white rounded-xl shadow-sm p-6 space-y-3">
-        <h2 className="font-semibold">Workflow Transition</h2>
-        <div className="flex flex-wrap gap-2">
+      <div className="bg-white rounded-xl shadow-sm p-6 space-y-3">
+        <h2 className="font-semibold text-gray-900">State Transitions</h2>
+        <div className="flex gap-2">
           <button
-            className="px-3 py-1.5 border rounded disabled:opacity-50"
-            disabled={!canTransition.submit || transitionMutation.isPending}
-            onClick={() => transitionMutation.mutate("submit")}
+            className="px-3 py-1.5 border rounded text-sm disabled:opacity-50"
+            disabled={!availableActions.includes("submit")}
+            onClick={() => setPendingAction("submit")}
           >
             Submit
           </button>
           <button
-            className="px-3 py-1.5 border rounded disabled:opacity-50"
-            disabled={!canTransition.approve || transitionMutation.isPending}
-            onClick={() => transitionMutation.mutate("approve")}
+            className="px-3 py-1.5 border rounded text-sm disabled:opacity-50"
+            disabled={!availableActions.includes("approve")}
+            onClick={() => setPendingAction("approve")}
           >
             Approve
           </button>
           <button
-            className="px-3 py-1.5 border rounded disabled:opacity-50"
-            disabled={!canTransition.close || transitionMutation.isPending}
-            onClick={() => transitionMutation.mutate("close")}
+            className="px-3 py-1.5 border rounded text-sm disabled:opacity-50"
+            disabled={!availableActions.includes("close")}
+            onClick={() => setPendingAction("close")}
           >
             Close
           </button>
         </div>
-      </section>
+      </div>
 
-      <section className="bg-white rounded-xl shadow-sm p-6 space-y-3">
-        <h2 className="font-semibold">Electronic Signature</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-          <select
-            className="border rounded px-3 py-2"
-            value={meaning}
-            onChange={(e) => setMeaning(e.target.value)}
-          >
-            <option value="reviewed">Reviewed</option>
-            <option value="approved">Approved</option>
-            <option value="closed">Closed</option>
-          </select>
-          <input
-            type="password"
-            className="border rounded px-3 py-2"
-            placeholder="Re-enter password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-          <input
-            className="border rounded px-3 py-2"
-            placeholder="Comment (optional)"
-            value={comments}
-            onChange={(e) => setComments(e.target.value)}
-          />
-        </div>
-        <button
-          className="px-4 py-2 rounded bg-gray-900 text-white disabled:opacity-50"
-          disabled={signMutation.isPending || !password}
-          onClick={() => signMutation.mutate()}
-        >
-          {signMutation.isPending ? "Signing..." : "Apply Signature"}
-        </button>
-      </section>
+      <button
+        className="text-sm text-gray-500 hover:text-gray-800"
+        onClick={() => navigate("/qms/deviations")}
+      >
+        ← Back to deviations
+      </button>
+
+      <ESignatureModal
+        isOpen={Boolean(pendingAction)}
+        isLoading={transitionMutation.isPending}
+        title="Deviation State Transition"
+        description={
+          pendingAction
+            ? `Apply signature and transition deviation via '${pendingAction}'.`
+            : undefined
+        }
+        meaning={pendingAction === "approve" ? "approved" : pendingAction === "close" ? "closed" : "reviewed"}
+        onClose={() => setPendingAction(null)}
+        onConfirm={async ({ password, comments }) => {
+          if (!pendingAction) return;
+          await transitionMutation.mutateAsync({ action: pendingAction, password, comments });
+        }}
+      />
     </div>
   );
 }
+
