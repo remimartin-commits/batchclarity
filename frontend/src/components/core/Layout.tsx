@@ -1,4 +1,5 @@
 import { Outlet, NavLink, useNavigate } from "react-router-dom";
+import { useState } from "react";
 import { useAuthStore } from "@/stores/authStore";
 import { authApi } from "@/lib/api";
 import ToastContainer from "@/components/core/Toast";
@@ -112,6 +113,7 @@ const navGroups: { group: string; items: NavItem[] }[] = [
 export default function Layout() {
   const { user, logout, hasPermission } = useAuthStore();
   const navigate = useNavigate();
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
 
   const filteredNavGroups = navGroups
     .map((group) => ({
@@ -134,13 +136,53 @@ export default function Layout() {
     navigate("/login");
   }
 
+  function closeMobileNav() {
+    setIsMobileNavOpen(false);
+  }
+
   return (
     <div className="flex h-screen bg-gray-50">
+      <button
+        type="button"
+        onClick={() => setIsMobileNavOpen(true)}
+        className="lg:hidden fixed top-3 left-3 z-40 rounded-lg bg-gray-900 text-white p-2 shadow-lg"
+        aria-label="Open navigation"
+      >
+        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+        </svg>
+      </button>
+
+      {isMobileNavOpen && (
+        <div
+          className="lg:hidden fixed inset-0 z-30 bg-black/40"
+          onClick={closeMobileNav}
+          aria-hidden="true"
+        />
+      )}
+
       {/* Sidebar */}
-      <aside className="w-64 bg-gray-900 flex flex-col overflow-y-auto flex-shrink-0">
+      <aside
+        className={clsx(
+          "w-64 bg-gray-900 flex flex-col overflow-y-auto flex-shrink-0 fixed inset-y-0 left-0 z-40 transform transition-transform duration-200 lg:translate-x-0 lg:static",
+          isMobileNavOpen ? "translate-x-0" : "-translate-x-full"
+        )}
+      >
         {/* Logo */}
         <div className="px-6 py-5 border-b border-gray-700 flex-shrink-0">
-          <span className="text-white font-bold text-lg tracking-tight">GMP Platform</span>
+          <div className="flex items-center justify-between">
+            <span className="text-white font-bold text-lg tracking-tight">GMP Platform</span>
+            <button
+              type="button"
+              onClick={closeMobileNav}
+              className="lg:hidden text-gray-300 hover:text-white"
+              aria-label="Close navigation"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
           <span className="block text-gray-400 text-xs mt-0.5">v0.2.0 — GMP Validated</span>
         </div>
 
@@ -157,6 +199,7 @@ export default function Layout() {
                     key={item.path}
                     to={item.path}
                     end={item.path === "/"}
+                    onClick={closeMobileNav}
                     className={({ isActive }) =>
                       clsx(
                         "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
