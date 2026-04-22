@@ -92,16 +92,16 @@
     },
 
     "equipment": {
-      "tier": "SKELETON",
+      "tier": "FUNCTIONAL",
       "gmp_name": "Equipment & Calibration Management",
       "ai_analogue": "Capability Verification Engine",
       "ai_analogue_function": "Tracks whether each tool/agent/resource is within its verified operating envelope. Flags drift. Enforces re-qualification before a degraded tool is trusted again. Answers: 'is this component still fit for purpose?'",
       "path_b_capability": "Calibration = periodic verification of agent capability. Qualification = formal proof of fitness. Maintenance = corrective action on degraded capability.",
       "notes": "Calibration SQL counts; is_overdue maintained by hook; batch notification.",
       "features": {
-        "calibration":    "SKELETON",
-        "qualification":  "SKELETON",
-        "maintenance":    "SKELETON"
+        "calibration":    "FUNCTIONAL",
+        "qualification":  "FUNCTIONAL",
+        "maintenance":    "FUNCTIONAL"
       },
       "blocking": [],
       "validated": false

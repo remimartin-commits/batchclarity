@@ -70,6 +70,12 @@ async def _seed_user_site(session) -> User:
 
 @pytest.mark.asyncio
 async def test_calibration_is_overdue_flag_after_hook(eq_tr_session, monkeypatch):
+    notify_calls: list[tuple[str, dict]] = []
+
+    async def _capture_send_rule_based(_session, rule_code: str, payload: dict) -> int:
+        notify_calls.append((rule_code, payload))
+        return 1
+
     monkeypatch.setattr(
         "app.modules.equipment.tasks.async_session_factory",
         eq_tr_session,
@@ -77,7 +83,7 @@ async def test_calibration_is_overdue_flag_after_hook(eq_tr_session, monkeypatch
     monkeypatch.setattr(
         NotificationService,
         "send_rule_based",
-        _noop_send_rule_based,
+        _capture_send_rule_based,
     )
     now = datetime.now(timezone.utc)
     rid: str
@@ -112,6 +118,8 @@ async def test_calibration_is_overdue_flag_after_hook(eq_tr_session, monkeypatch
     async with eq_tr_session() as session:
         r = (await session.execute(select(CalibrationRecord).where(CalibrationRecord.id == rid))).scalar_one()
         assert r.is_overdue is True
+    assert notify_calls
+    assert notify_calls[0][0] == "equipment_calibration_due"
 
 
 @pytest.mark.asyncio
