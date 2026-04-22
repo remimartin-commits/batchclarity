@@ -6,13 +6,10 @@ from sqlalchemy import select
 
 from app.core.database import async_session_factory
 from app.core.documents.models import DocumentVersion
-from app.core.notify.service import NotificationService
-
-_RULE_DOC_REVIEW = "document_review_due"
 
 
-async def check_document_reviews() -> dict[str, int]:
-    """Count approved/effective document versions due for review; notify when count > 0."""
+async def check_document_reviews() -> int:
+    """Count approved/effective document versions due for review in 60 days."""
     now = datetime.now(timezone.utc)
     threshold = now + timedelta(days=60)
     async with async_session_factory() as session:
@@ -24,17 +21,4 @@ async def check_document_reviews() -> dict[str, int]:
             )
         )
         rows = result.scalars().all()
-        overdue = len(rows)
-
-        notified = 0
-        if overdue > 0:
-            notified = await NotificationService.send_rule_based(
-                session,
-                _RULE_DOC_REVIEW,
-                {
-                    "count": overdue,
-                    "site_id": "aggregated (all sites)",
-                },
-            )
-        await session.commit()
-    return {"overdue": overdue, "notified": notified}
+    return len(rows)

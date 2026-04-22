@@ -16,19 +16,9 @@ class NotificationService:
 
     @staticmethod
     def _render(template: str, variables: dict) -> str:
-        return NotificationService._render_with_context(template, variables)
-
-    @staticmethod
-    def _render_with_context(template: str, context: dict) -> str:
-        """Render `{{name}}` and `{name}` placeholders from *context* (order: double then single)."""
-        out = template
-        for key, value in context.items():
-            v = "" if value is None else str(value)
-            out = out.replace("{{" + key + "}}", v)
-        for key, value in context.items():
-            v = "" if value is None else str(value)
-            out = out.replace("{" + key + "}", v)
-        return out
+        for key, value in variables.items():
+            template = template.replace(f"{{{key}}}", str(value) if value else "")
+        return template
 
     @staticmethod
     async def send_event(
@@ -64,10 +54,8 @@ class NotificationService:
             if not address:
                 continue
 
-            subject = NotificationService._render_with_context(
-                template.subject_template or "", variables
-            )
-            body = NotificationService._render_with_context(template.body_template, variables)
+            subject = NotificationService._render(template.subject_template or "", variables)
+            body = NotificationService._render(template.body_template, variables)
 
             log = NotificationLog(
                 template_id=template.id,
@@ -89,82 +77,6 @@ class NotificationService:
             logs.append(log)
 
         return logs
-
-    @staticmethod
-    async def send_rule_based(
-        session: AsyncSession,
-        rule_code: str,
-        context: dict,
-    ) -> int:
-        """
-        Look up NotificationTemplate by *code* == *rule_code*, apply matching
-        NotificationRule rows (optionally filtered by *site_id* in *context*),
-        render the template, write NotificationLog rows, and attempt dispatch.
-        Returns the number of notifications successfully sent.
-        """
-        tpl_result = await session.execute(
-            select(NotificationTemplate).where(
-                NotificationTemplate.code == rule_code,
-                NotificationTemplate.is_active == True,  # noqa: E712
-            )
-        )
-        template = tpl_result.scalar_one_or_none()
-        if not template:
-            logger.warning("No active notification template for rule_code=%s", rule_code)
-            return 0
-
-        site_id = context.get("site_id")
-
-        rule_result = await session.execute(
-            select(NotificationRule).where(
-                NotificationRule.template_id == template.id,
-                NotificationRule.is_active == True,  # noqa: E712
-            )
-        )
-        rules = rule_result.scalars().all()
-        if site_id is not None:
-            rules = [r for r in rules if r.site_id is None or r.site_id == site_id]
-        else:
-            rules = [r for r in rules if r.site_id is None]
-
-        if not rules:
-            logger.info(
-                "No notification rules for rule_code=%s (site_id=%r)", rule_code, site_id
-            )
-            return 0
-
-        sent = 0
-        for rule in rules:
-            address = rule.recipient_address
-            if not address:
-                continue
-
-            subj = NotificationService._render_with_context(
-                template.subject_template or "", context
-            )
-            body = NotificationService._render_with_context(template.body_template, context)
-
-            log = NotificationLog(
-                template_id=template.id,
-                recipient_user_id=rule.recipient_user_id,
-                recipient_address=address,
-                channel=rule.channel,
-                subject=subj,
-                body=body,
-                record_type=context.get("record_type"),
-                record_id=context.get("record_id"),
-                status="pending",
-            )
-            session.add(log)
-            await session.flush([log])
-
-            success = await NotificationService._dispatch(rule.channel, address, subj, body)
-            log.status = "sent" if success else "failed"
-            log.sent_at = datetime.now(timezone.utc) if success else None
-            if success:
-                sent += 1
-
-        return sent
 
     @staticmethod
     async def _dispatch(channel: str, address: str, subject: str, body: str) -> bool:

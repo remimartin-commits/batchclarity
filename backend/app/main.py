@@ -22,24 +22,20 @@ if sys.platform == "win32":
     importlib.metadata.entry_points = _gmp_safe_entry_points  # type: ignore[assignment]
 
 import logging
-from time import perf_counter
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
-from sqlalchemy import select, text
 
 from app.core.config import settings
-from app.core.database import engine, Base, AsyncSessionLocal
+from app.core.database import engine, Base
 from app.core.tasks import run_overdue_checks, clear_overdue_hooks, register_overdue_hook
 from app.api.v1.router import api_router
 from app.modules.qms.tasks import check_overdue_capas
 from app.modules.equipment.tasks import check_calibration_due
 from app.modules.training.tasks import check_overdue_training
 from app.core.documents.tasks import check_document_reviews
-from app.modules.env_monitoring.tasks import check_overdue_monitoring_reviews
-from app.core.integration.models import IntegrationConnector
 
 # ── Import all models so SQLAlchemy/Alembic can discover every table ──────────
 # Foundation
@@ -91,8 +87,6 @@ logger = logging.getLogger(__name__)
 # ── APScheduler instance (module-level so lifespan can manage it) ─────────────
 scheduler = AsyncIOScheduler(timezone="UTC")
 
-_use_pg_scheduler_lock: bool = not settings.DATABASE_URL.lower().startswith("sqlite")
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -100,61 +94,48 @@ async def lifespan(app: FastAPI):
     Application lifespan handler.
 
     Startup:
-      1. Create all database tables in non-production (dev/test — production uses Alembic).
-      2. Optionally acquire PostgreSQL advisory lock; start APScheduler on one worker only.
+      1. Create all database tables (dev/test convenience — production uses Alembic).
+      2. Start APScheduler with GMP compliance background jobs.
 
     Shutdown:
-      3. Gracefully shut down the scheduler, release advisory lock, dispose engine.
+      3. Gracefully shut down the scheduler (allow in-flight jobs to finish).
+      4. Dispose the SQLAlchemy engine connection pool.
     """
-    if settings.ENVIRONMENT != "production":
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-        logger.info("Database tables verified/created (non-production).")
-    else:
-        logger.info("Skipping create_all in production; use Alembic migrations.")
+    # 1. Database table creation (idempotent; Alembic handles migrations in production)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    logger.info("Database tables verified/created.")
 
-    run_scheduler = True
-    if _use_pg_scheduler_lock:
-        async with AsyncSessionLocal() as session:
-            r = await session.execute(text("SELECT pg_try_advisory_lock(738194501)"))
-            run_scheduler = bool(r.scalar())
-            await session.commit()
-
-    if not run_scheduler:
-        logger.warning(
-            "Scheduler advisory lock not acquired; skipping APScheduler in this worker."
-        )
-    else:
-        clear_overdue_hooks()
-        register_overdue_hook("qms_overdue_capas", check_overdue_capas)
-        register_overdue_hook("equipment_calibration", check_calibration_due)
-        register_overdue_hook("training_overdue", check_overdue_training)
-        register_overdue_hook("document_reviews", check_document_reviews)
-        register_overdue_hook("env_monitoring_reviews", check_overdue_monitoring_reviews)
-        scheduler.add_job(
-            run_overdue_checks,
-            trigger=IntervalTrigger(hours=6),
-            id="overdue_checks",
-            name="GMP Overdue Checks (all modules)",
-            replace_existing=True,
-            misfire_grace_time=300,
-            coalesce=True,
-        )
-        scheduler.start()
-        logger.info("APScheduler started — overdue checks every 6 hours.")
+    # 2. Register and start background jobs
+    clear_overdue_hooks()
+    register_overdue_hook("qms_overdue_capas", check_overdue_capas)
+    register_overdue_hook("equipment_calibration", check_calibration_due)
+    register_overdue_hook("training_overdue", check_overdue_training)
+    register_overdue_hook("document_reviews", check_document_reviews)
+    #    run_overdue_checks() fires every 6 hours and handles:
+    #      - Overdue CAPA notifications
+    #      - Equipment calibration due / overdue alerts
+    #      - Overdue training assignment reminders
+    #      - Document periodic review reminders (60-day look-ahead)
+    scheduler.add_job(
+        run_overdue_checks,
+        trigger=IntervalTrigger(hours=6),
+        id="overdue_checks",
+        name="GMP Overdue Checks (CAPA / Calibration / Training / Documents)",
+        replace_existing=True,
+        misfire_grace_time=300,   # 5-minute grace period if a fire is missed
+        coalesce=True,            # Collapse multiple missed fires into one
+    )
+    scheduler.start()
+    logger.info("APScheduler started — overdue checks every 6 hours.")
 
     yield
 
-    if run_scheduler:
-        scheduler.shutdown(wait=True)
-        logger.info("APScheduler shut down.")
+    # 3. Graceful scheduler shutdown
+    scheduler.shutdown(wait=True)
+    logger.info("APScheduler shut down.")
 
-    if _use_pg_scheduler_lock and run_scheduler:
-        async with AsyncSessionLocal() as session:
-            await session.execute(text("SELECT pg_advisory_unlock(738194501)"))
-            await session.commit()
-        logger.info("Released scheduler PostgreSQL advisory lock.")
-
+    # 4. Release DB connection pool
     await engine.dispose()
     logger.info("Database engine disposed.")
 
@@ -173,19 +154,14 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-if settings.ENVIRONMENT == "development":
-    _cors_origins = [
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:5173",
-    ]
-else:
-    _cors_origins = [settings.FRONTEND_URL]
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_cors_origins,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "https://t160mfctr8bq.space.minimax.io",
+        "*",  # dev only — lock down in production
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -223,36 +199,4 @@ async def scheduler_status():
     return {
         "scheduler_running": scheduler.running,
         "jobs": jobs,
-    }
-
-
-@app.get("/health/db", tags=["ops"])
-async def health_db():
-    t0 = perf_counter()
-    try:
-        async with AsyncSessionLocal() as session:
-            await session.execute(text("SELECT 1"))
-        ms = (perf_counter() - t0) * 1000.0
-        return {"status": "ok", "latency_ms": round(ms, 2)}
-    except Exception as exc:
-        return {"status": "error", "detail": str(exc), "latency_ms": None}
-
-
-@app.get("/health/integrations", tags=["ops"])
-async def health_integrations():
-    async with AsyncSessionLocal() as session:
-        result = await session.execute(select(IntegrationConnector))
-        rows = result.scalars().all()
-    return {
-        "connectors": [
-            {
-                "id": c.id,
-                "name": c.name,
-                "system_type": c.system_type,
-                "is_active": c.is_active,
-                "last_ping_status": c.last_ping_status,
-                "last_ping_at": c.last_ping_at.isoformat() if c.last_ping_at else None,
-            }
-            for c in rows
-        ]
     }

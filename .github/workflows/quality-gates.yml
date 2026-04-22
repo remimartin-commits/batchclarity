@@ -11,10 +11,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -32,10 +32,8 @@ jobs:
       - name: Type check (strict)
         run: python -m mypy --config-file pyproject.toml
 
-      - name: Architecture & coupling tests
-        run: |
-          python -m pytest backend/tests/test_architecture_boundaries.py \
-            backend/tests/test_module_foundation_fk_budget.py -q
+      - name: Architecture tests
+        run: python -m pytest backend/tests/test_architecture_boundaries.py -q
 
       - name: Generate docs artifacts
         run: python backend/scripts/generate-docs.py

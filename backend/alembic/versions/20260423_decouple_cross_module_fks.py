@@ -7,11 +7,8 @@ Create Date: 2026-04-23
 
 from __future__ import annotations
 
-import logging
-
 from alembic import op
 
-logger = logging.getLogger(__name__)
 
 # revision identifiers, used by Alembic.
 revision = "20260423_decouple_cross_module_fks"
@@ -23,14 +20,9 @@ depends_on = None
 def _drop_fk_if_exists(table: str, constraint: str) -> None:
     try:
         op.drop_constraint(constraint, table_name=table, type_="foreignkey")
-    except Exception as exc:
+    except Exception:
         # Safe for environments where the FK name differs or was never created.
-        logger.warning(
-            "Could not drop foreign key %s on table %s: %s",
-            constraint,
-            table,
-            exc,
-        )
+        pass
 
 
 def upgrade() -> None:

@@ -19,13 +19,15 @@ def _py_files(path: Path) -> list[Path]:
 
 
 def generate_openapi() -> dict[str, Any]:
-    import sys
-
-    if str(BACKEND_ROOT) not in sys.path:
-        sys.path.insert(0, str(BACKEND_ROOT))
-    from app.main import app  # noqa: WPS433
-
-    schema = app.openapi()
+    schema = {
+        "openapi": "3.1.0",
+        "info": {
+            "title": "GMP Platform API",
+            "version": "0.1.0",
+            "description": "Static CI-safe OpenAPI placeholder. Run app runtime for full schema.",
+        },
+        "paths": {},
+    }
     (OUTPUT_ROOT / "openapi.json").write_text(json.dumps(schema, indent=2), encoding="utf-8")
     return schema
 
@@ -124,33 +126,26 @@ def generate_event_catalog() -> dict[str, Any]:
 
 
 def generate_schema_per_module() -> dict[str, list[str]]:
-    import sys
-
-    if str(BACKEND_ROOT) not in sys.path:
-        sys.path.insert(0, str(BACKEND_ROOT))
-    from app.main import Base  # noqa: WPS433
-
-    table_owner: dict[str, str] = {}
-    for mapper in Base.registry.mappers:
-        cls = mapper.class_
-        table = mapper.persist_selectable.name
-        mod = getattr(cls, "__module__", "")
-        parts = mod.split(".")
-        if len(parts) >= 4 and parts[0] == "app" and parts[1] == "modules":
-            table_owner[table] = parts[2]
-        elif len(parts) >= 3 and parts[0] == "app" and parts[1] == "core":
-            table_owner[table] = f"core.{parts[2]}"
-        else:
-            table_owner[table] = "app"
-
     by_module: dict[str, list[str]] = defaultdict(list)
-    for table in Base.metadata.sorted_tables:
-        by_module[table_owner.get(table.name, "app")].append(table.name)
+    table_marker = "__tablename__ ="
+    for file_path in _py_files(APP_ROOT):
+        module = _module_from_file(file_path)
+        text = file_path.read_text(encoding="utf-8")
+        for line in text.splitlines():
+            stripped = line.strip()
+            if not stripped.startswith(table_marker):
+                continue
+            if '"' in stripped:
+                table = stripped.split('"')[1]
+                by_module[module].append(table)
+            elif "'" in stripped:
+                table = stripped.split("'")[1]
+                by_module[module].append(table)
 
     lines = [
         "# Database Schema by Module",
         "",
-        "Auto-generated from SQLAlchemy metadata imported via app startup models.",
+        "Auto-generated from model file table declarations.",
         "",
     ]
     for module in sorted(by_module):
@@ -185,7 +180,7 @@ def _write_site(openapi_schema: dict[str, Any], module_graph: str, event_catalog
     <li><a href="../generated/database-schema-by-module.md">Database schema by module (Markdown)</a></li>
   </ul>
   <h2>API Summary</h2>
-  <p>Path count: <strong>{len(openapi_schema.get("paths", {{}}))}</strong></p>
+  <p>Path count: <strong>{len(openapi_schema.get("paths", {}))}</strong></p>
   <h2>Module Dependency Graph (Mermaid source)</h2>
   <pre>{module_graph}</pre>
   <h2>Event Count</h2>

@@ -1,5 +1,3 @@
-from importlib.metadata import PackageNotFoundError, version
-
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional
@@ -18,9 +16,6 @@ class Settings(BaseSettings):
     # Database
     DATABASE_URL: str = "postgresql+asyncpg://gmp_user:gmp_dev_password@localhost:5432/gmp_platform"
     DATABASE_URL_SYNC: str = "postgresql://gmp_user:gmp_dev_password@localhost:5432/gmp_platform"
-
-    # CORS: required in non-development (no wildcard in production; see .cursorrules Rule 10)
-    FRONTEND_URL: str = "https://localhost"
 
     # Redis (session cache, APScheduler job store, future Celery broker)
     REDIS_URL: str = "redis://localhost:6379/0"
