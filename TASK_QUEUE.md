@@ -17,21 +17,45 @@
 
 ---
 
-## ACTIVE SPRINT — 2026-04-23 Matrix Agent Review
+## OPTION C GUARD RAILS — READ BEFORE STARTING ANY TASK
+#
+# Strategic decision (ADR-005, 2026-04-22): Option C — GMP Now, Truth Layer Later.
+#
+# PHASE 2 (truth layer SDK extraction) IS LOCKED until ALL FOUR conditions are met:
+#   G1: At least 2 modules at FUNCTIONAL tier in registry.json
+#   G2: At least 1 paying design partner live on the platform
+#   G3: TASK-029 DONE (QMS FUNCTIONAL tier)
+#   G4: TASK-031 DONE (Frontend QMS CAPA demo screen)
+#
+# Until all four are met: GMP features ONLY. No SDK extraction. No abstract truth layer work.
+# If a guard condition is blocking, fix the condition — do not start Phase 2 early.
+# See: decisions/ADR-005-option-c-hybrid-strategy.md
+
+---
+
+## ACTIVE SPRINT — 2026-04-22 (Updated)
 #
 # Sprint progress:
 #   ✅ TASK-026 — git init + push to GitHub (remimartin-commits/batchclarity)
 #   ✅ TASK-027 — Supabase PostgreSQL confirmed + Alembic migrated to head
-#   ✅ TASK-020 — QMS services.py written (CAPA + Deviation + ChangeControl)
-#   ✅ TASK-021 — MES services.py + tasks.py written (anti-backfill, e-sig release)
+#   ✅ TASK-020 — QMS services.py (CAPA + Deviation + ChangeControl)
+#   ✅ TASK-021 — MES services.py + tasks.py (anti-backfill, e-sig release)
 #   ✅ TASK-022 — Equipment services.py
 #   ✅ TASK-023 — Training services.py
 #   ✅ TASK-024 — LIMS services.py + tasks.py (OOS auto-trigger)
 #   ✅ TASK-025 — ENV Monitoring services.py
+#   ✅ TASK-028 — All 6 module routers wired to services (895 ins, 1413 del)
+#   🔲 TASK-029 — QMS to FUNCTIONAL tier [IN PROGRESS — Cursor]
+#   🔲 TASK-031 — Frontend QMS CAPA screen [PENDING]
+#   🔲 TASK-030 — Table partitioning runbook [PENDING]
+#   🔲 TASK-032 — Constitutional layer formalization [PENDING]
 #
-# IMPORTANT: qms/services.py, mes/services.py, mes/tasks.py are WRITTEN but
-# not yet committed. Cursor's FIRST action must be to commit them.
-# See CURSOR_HANDOVER.md Step 0.
+# Matrix Agent completed this session (2026-04-22):
+#   ✅ TASK-033 — ALCOA+ to EU AI Act article outline written
+#   ✅ TASK-034 — Design partner research: 3 candidates identified (VIVEbiotech, Genezen, RoslinCT)
+#   ✅ ADR-005 — Option C strategy formally committed
+#   ✅ README.md — Strategic Path section added
+#   ✅ CURSOR_HANDOVER.md — written (explains router change + Step 0 commit)
 
 ---
 
@@ -195,6 +219,52 @@
 
 ---
 
+---
+
+### TASK-033 [STRATEGIC] — Draft ALCOA+ to EU AI Act article outline
+- **Status:** DONE — 2026-04-22 (Matrix Agent)
+- **Owner:** Project founder (not Cursor — human writing task)
+- **Summary:** Full article outline written to `docs/articles/alcoa-eu-ai-act-mapping-outline.md`.
+  8 sections, ~3,000-word target, citation list, publication strategy. Maps each ALCOA+ principle
+  to specific EU AI Act articles (9, 10, 12, 14, 17 + Annex IV). Working title recommended:
+  "The Pharmaceutical Industry Already Solved AI Governance (And Nobody Noticed)".
+- **Publish gate:** Do NOT publish before first design partner is live on the platform.
+  Credibility requires "we built this" — not "we theorized this."
+- **Draft target:** Phase 2, Month 7
+
+---
+
+### TASK-034 [STRATEGIC] — Design partner pipeline: identify and approach 3 CDMO targets
+- **Status:** RESEARCH DONE — 2026-04-22 (Matrix Agent). Outreach = human task, not Cursor.
+- **Owner:** Project founder
+- **Summary:** 3 candidates researched and documented in `docs/strategy/design-partner-pipeline.md`:
+  1. **VIVEbiotech** (Spain, EU) — hired first-ever CQO in Dec 2025; blank-slate QMS buildout.
+     Contact: Tathiane Castro (CQO). ⭐ Highest priority.
+  2. **Genezen** (Indiana + Massachusetts, USA) — two-site QMS integration + 6× headcount growth.
+     Contact: Steve Favaloro (CEO).
+  3. **RoslinCT** (Edinburgh UK + Massachusetts) — 22 GMP suites, multi-site, MHRA+FDA dual.
+     Contact: Peter Coleman (CEO).
+- **Outreach gate:** Do NOT start outreach before TASK-031 is DONE (no UI = no demo = no deal).
+- **Cursor action:** None. This is a human outreach task.
+
+---
+
+### TASK-035 [LOCKED] — Truth layer SDK extraction (Phase 2)
+- **Status:** LOCKED — do not start until ALL guard conditions are met
+- **Guard conditions (all must be true before any work begins):**
+  - [ ] G1: At least 2 modules at FUNCTIONAL tier in registry.json
+  - [ ] G2: At least 1 paying design partner live on the platform
+  - [ ] G3: TASK-029 DONE
+  - [ ] G4: TASK-031 DONE
+- **What this task will involve (when unlocked):**
+  Extract audit trail engine, append-only record pattern, e-signature layer, and cross-module
+  event propagation into a domain-agnostic internal SDK. Do NOT launch publicly — instrument
+  and validate internally only. See ADR-005 Phase 2 for full scope.
+- **Cursor action:** If you see this task and the guard conditions above are not all checked,
+  ignore this task and work on GMP tasks instead.
+
+---
+
 ## BACKLOG — not started (Phase 5+)
 
 ### TASK-016b — Build Serialization module
@@ -328,7 +398,7 @@
 ---
 
 *Queue maintained by: Matrix Agent*
-*Updated: 2026-04-23*
-*Next Matrix Agent review: 2026-04-26 (3-day cycle)*
-*Dual-path strategy: README-GMP.md (regulatory) + README-AI.md (AI governance) — both paths warm*
-*Sprint focus: equipment/training/lims/env_monitoring services.py → wire routers → QMS FUNCTIONAL*
+*Updated: 2026-04-22 14:45*
+*Next Matrix Agent review: After TASK-029 + TASK-031 are both DONE*
+*Strategic path: Option C (ADR-005) — GMP Phase 1 now, truth layer Phase 2 after guard conditions met*
+*Sprint focus: TASK-029 (QMS FUNCTIONAL) → TASK-031 (Frontend CAPA screen) → TASK-030 → TASK-032*

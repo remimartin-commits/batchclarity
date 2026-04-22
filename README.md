@@ -6,6 +6,21 @@ Unified GMP Facility Management Platform — replaces TrackWise, Syncade, paper 
 
 ---
 
+## Strategic Path
+
+**Phase 1 (current):** A validated, integrated GMP compliance platform for pharma, biotech, and
+CDMO organizations — generating revenue and proving the infrastructure under the world's most
+demanding regulatory regime (FDA + EMA, criminal penalties for non-compliance).
+
+**Phase 2 (post first customer):** The same underlying infrastructure — ALCOA+ append-only audit
+trails, e-signature attribution, cross-module event propagation — abstracted into a domain-agnostic
+truth layer for AI systems requiring verifiable, attributed, and auditable outputs. The GMP platform
+is the reference implementation. Pharmaceutical manufacturing is the first domain.
+
+> Decision record: `decisions/ADR-005-option-c-hybrid-strategy.md`
+
+---
+
 ## Modules
 
 | Module | Status | Replaces |
