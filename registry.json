@@ -1,8 +1,9 @@
 {
   "_schema": "gmp-module-registry/v1",
-  "_updated": "2026-04-21",
+  "_updated": "2026-04-22",
   "_maintainer": "Matrix Agent",
   "_note": "Cursor must update this file when a module advances a tier. Matrix Agent verifies tier claims at each 3-day review.",
+  "_dual_path": "Each module has two names: gmp_name (Path A — regulatory product) and ai_analogue (Path B — AI governance framework). Same code. Different lens.",
 
   "_tier_definitions": {
     "SKELETON": "Models + router exists. No real business logic. Not usable.",
@@ -42,14 +43,17 @@
   "modules": {
     "foundation": {
       "tier": "HARDENED",
+      "gmp_name": "Foundation / Core Services",
+      "ai_analogue": "Constitutional Layer + Inter-Module Communication Bus",
+      "ai_analogue_function": "Immutable audit trail (provenance graph), e-signature = non-repudiation, workflow engine = state machine orchestration, boundary enforcement = containment of module failures",
       "submodules": {
-        "auth":        { "tier": "HARDENED", "notes": "JWT, RBAC, sessions, password history, site model" },
-        "audit":       { "tier": "HARDENED", "notes": "Append-only AuditEvent. Server timestamps." },
-        "esig":        { "tier": "HARDENED", "notes": "Re-authentication required. Meaning + date captured." },
-        "workflow":    { "tier": "HARDENED", "notes": "WorkflowDefinition, WorkflowInstance, history." },
-        "documents":   { "tier": "HARDENED", "notes": "Version-controlled. Approval-gated. Periodic review hook wired." },
-        "notify":      { "tier": "FUNCTIONAL", "notes": "send_rule_based; scheduler rules; overdue hooks notify." },
-        "integration": { "tier": "SKELETON", "notes": "SAP/DeltaV connector stubs in app/core/integration/connectors/ (TASK-014/015)." }
+        "auth":        { "tier": "HARDENED", "ai_analogue": "Identity & Access Arbiter", "notes": "JWT, RBAC, sessions, password history, site model" },
+        "audit":       { "tier": "HARDENED", "ai_analogue": "Provenance Graph Engine", "notes": "Append-only AuditEvent. Server timestamps. Every action traceable." },
+        "esig":        { "tier": "HARDENED", "ai_analogue": "Non-Repudiation Service", "notes": "Re-authentication required. Meaning + date captured." },
+        "workflow":    { "tier": "HARDENED", "ai_analogue": "State Machine Orchestrator", "notes": "WorkflowDefinition, WorkflowInstance, history." },
+        "documents":   { "tier": "HARDENED", "ai_analogue": "Knowledge Base / Versioned Memory", "notes": "Version-controlled. Approval-gated. Periodic review hook wired." },
+        "notify":      { "tier": "FUNCTIONAL", "ai_analogue": "Alert & Escalation Bus", "notes": "send_rule_based; scheduler rules; overdue hooks notify." },
+        "integration": { "tier": "SKELETON", "ai_analogue": "External System Boundary (read-only)", "notes": "SAP/DeltaV connector stubs. Hardware-bound systems never write-accessed." }
       },
       "blocking": ["Table partitioning (TASK-010) before extreme volume in audit_events"],
       "validated": false
@@ -57,6 +61,10 @@
 
     "qms": {
       "tier": "SKELETON",
+      "gmp_name": "Quality Management System",
+      "ai_analogue": "Quality / Alignment Guard",
+      "ai_analogue_function": "Checks outputs against intent. Flags deviation from expected behaviour. Enforces standards. Manages corrective actions. The module that asks: 'did this output actually match what was requested?'",
+      "path_b_capability": "Deviation = detected misalignment. CAPA = corrective action loop. Change Control = proposed modification requiring human approval before implementation.",
       "notes": "CAPA overdue hook notifies. Remaining business depth TBD.",
       "features": {
         "capa":           "SKELETON",
@@ -69,7 +77,11 @@
 
     "mes": {
       "tier": "SKELETON",
-      "notes": "MBR, EBR, BatchRecordStep. Cross-module FK removed (linked_deviation_id). Back-fill prevention in place. Needs e-sig on release.",
+      "gmp_name": "Manufacturing Execution System",
+      "ai_analogue": "Execution Orchestrator",
+      "ai_analogue_function": "Manages task sequencing, resource allocation, step-by-step execution with verification, completion confirmation. No step is marked done without evidence. Back-fill prevention = no retroactive falsification of execution records.",
+      "path_b_capability": "MBR = task template. Batch Record = execution instance. BatchRecordStep = individual verified action. Release = human-approved output gate.",
+      "notes": "MBR, EBR, BatchRecordStep. Cross-module FK removed. Back-fill prevention in place. Needs e-sig on release.",
       "features": {
         "master_batch_record": "SKELETON",
         "batch_record":        "SKELETON",
@@ -81,7 +93,11 @@
 
     "equipment": {
       "tier": "SKELETON",
-      "notes": "Calibration SQL counts; is_overdue maintained by hook; batch notification (TASK-002/003).",
+      "gmp_name": "Equipment & Calibration Management",
+      "ai_analogue": "Capability Verification Engine",
+      "ai_analogue_function": "Tracks whether each tool/agent/resource is within its verified operating envelope. Flags drift. Enforces re-qualification before a degraded tool is trusted again. Answers: 'is this component still fit for purpose?'",
+      "path_b_capability": "Calibration = periodic verification of agent capability. Qualification = formal proof of fitness. Maintenance = corrective action on degraded capability.",
+      "notes": "Calibration SQL counts; is_overdue maintained by hook; batch notification.",
       "features": {
         "calibration":    "SKELETON",
         "qualification":  "SKELETON",
@@ -93,7 +109,11 @@
 
     "training": {
       "tier": "SKELETON",
-      "notes": "Assignment status=overdue from hook; SQL counts; notifications (TASK-002/003).",
+      "gmp_name": "Training & Competency Management",
+      "ai_analogue": "Capability Development & Certification",
+      "ai_analogue_function": "Ensures sub-components have demonstrated competency before being trusted with tasks. Read-and-understood e-signature = agent has acknowledged constraints. Tracks skill currency — an agent that hasn't been re-calibrated recently loses trusted status.",
+      "path_b_capability": "Curriculum = capability specification. Assignment = required learning task. Completion with e-sig = verified acknowledgement. Overdue = capability expired.",
+      "notes": "Assignment status=overdue from hook; SQL counts; notifications.",
       "features": {
         "curriculum":   "SKELETON",
         "assignments":  "SKELETON",
@@ -105,6 +125,11 @@
 
     "lims": {
       "tier": "SKELETON",
+      "gmp_name": "Laboratory Information Management System",
+      "ai_analogue": "Information Purity Engine",
+      "ai_analogue_function": "Samples data streams. Verifies provenance of information. Detects distortion, manipulation, or contamination. Quarantines outputs that fail verification. Every data point has a chain of custody. OOS = out-of-specification = detected anomaly requiring investigation.",
+      "path_b_capability": "Sample = data input under examination. TestResult = verification outcome (append-only, corrections reference originals). OOSInvestigation = anomaly investigation triggered automatically on failure. Specification = what 'pure' looks like for this data type.",
+      "path_b_priority": "HIGHEST — this is the module that makes the entire system trustworthy. Without verified information provenance, all other modules operate on potentially corrupted inputs.",
       "notes": "TestMethod, Spec, Sample, TestResult, OOSInvestigation. Append-only TestResult in place. OOS auto-trigger not wired.",
       "features": {
         "test_methods":      "SKELETON",
@@ -119,7 +144,11 @@
 
     "env_monitoring": {
       "tier": "SKELETON",
-      "notes": "Trend review overdue hook + notification template (TASK-011). No hardware sensor integration.",
+      "gmp_name": "Environmental Monitoring",
+      "ai_analogue": "Operating Environment Sentinel",
+      "ai_analogue_function": "Monitors the conditions in which other modules operate. Detects environmental drift that could degrade output quality even when modules appear to be functioning correctly. Answers: 'is the operating context still within safe parameters?'",
+      "path_b_capability": "MonitoringLocation = context dimension being tracked. AlertLimit = constitutional boundary for that dimension. Trend = pattern detection over time. Sensor integration = real-world signal ingestion.",
+      "notes": "Trend review overdue hook + notification template. No hardware sensor integration.",
       "features": {
         "monitoring_locations": "SKELETON",
         "results":              "SKELETON",
@@ -131,13 +160,23 @@
   },
 
   "integrations": {
-    "sap_erp":   { "status": "STUB", "type": "INTEGRATE", "task": "TASK-014", "notes": "SAPRestConnector class" },
-    "deltav":    { "status": "STUB", "type": "INTEGRATE", "task": "TASK-015", "notes": "DeltaVHistorianConnector class" },
-    "cds":       { "status": "BACKLOG", "type": "INTEGRATE", "notes": "Empower, Chromeleon — instrument connectors" },
+    "sap_erp":     { "status": "STUB", "type": "INTEGRATE", "task": "TASK-014", "notes": "SAPRestConnector class" },
+    "deltav":      { "status": "STUB", "type": "INTEGRATE", "task": "TASK-015", "notes": "DeltaVHistorianConnector class. In AI governance: the hardcode interface — human-defined immutable constraints, emergency stops, ethical boundaries." },
+    "cds":         { "status": "BACKLOG", "type": "INTEGRATE", "notes": "Empower, Chromeleon — instrument connectors" },
     "env_sensors": { "status": "BACKLOG", "type": "INTEGRATE", "notes": "viewLinc, Vaisala — hardware polling" }
   },
 
   "overall_platform_tier": "SKELETON",
   "target_tier_for_first_customer": "FUNCTIONAL",
-  "target_tier_for_validation_submission": "VALIDATED"
+  "target_tier_for_validation_submission": "VALIDATED",
+
+  "_path_b_module_priority_order": [
+    "lims (Information Purity Engine) — build first: without this, nothing is trustworthy",
+    "qms (Alignment Guard) — build second: detects when outputs deviate from intent",
+    "mes (Execution Orchestrator) — build third: structured task execution with verification",
+    "foundation/audit (Provenance Graph) — already HARDENED: the backbone of trust",
+    "equipment (Capability Verification) — build fourth: ensures tools remain fit for purpose",
+    "training (Capability Certification) — build fifth: ensures agents are current",
+    "env_monitoring (Environment Sentinel) — build sixth: context integrity"
+  ]
 }
