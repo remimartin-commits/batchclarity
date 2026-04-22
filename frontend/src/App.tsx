@@ -1,6 +1,8 @@
 import { Routes, Route, Navigate } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuthStore } from "@/stores/authStore";
 import Layout from "@/components/core/Layout";
+import SessionTimeoutModal from "@/components/core/SessionTimeoutModal";
 import Login from "@/pages/Login";
 import ChangePassword from "@/pages/ChangePassword";
 import Security from "@/pages/Security";
@@ -55,28 +57,72 @@ function PermissionRoute({ code, children }: { code: string; children: React.Rea
 }
 
 export default function App() {
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const [sessionTimedOut, setSessionTimedOut] = useState(false);
+  const timeoutRef = useRef<number | null>(null);
+  const inactivityMs = useMemo(() => 30 * 60 * 1000, []);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setSessionTimedOut(false);
+      if (timeoutRef.current) {
+        window.clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+      return;
+    }
+
+    const resetInactivityTimer = () => {
+      if (sessionTimedOut) return;
+      if (timeoutRef.current) window.clearTimeout(timeoutRef.current);
+      timeoutRef.current = window.setTimeout(() => {
+        setSessionTimedOut(true);
+      }, inactivityMs);
+    };
+
+    const events: Array<keyof WindowEventMap> = [
+      "mousemove",
+      "mousedown",
+      "keydown",
+      "touchstart",
+      "scroll",
+    ];
+    for (const eventName of events) {
+      window.addEventListener(eventName, resetInactivityTimer, { passive: true });
+    }
+    resetInactivityTimer();
+
+    return () => {
+      if (timeoutRef.current) window.clearTimeout(timeoutRef.current);
+      for (const eventName of events) {
+        window.removeEventListener(eventName, resetInactivityTimer);
+      }
+    };
+  }, [isAuthenticated, inactivityMs, sessionTimedOut]);
+
   return (
-    <Routes>
-      <Route path="/login" element={<Login />} />
-      <Route
-        path="/change-password"
-        element={
-          <ProtectedRoute>
-            <ChangePassword />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/"
-        element={
-          <ProtectedRoute>
-            <PasswordGate>
-              <Layout />
-            </PasswordGate>
-          </ProtectedRoute>
-        }
-      >
-        <Route index element={<Dashboard />} />
+    <>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route
+          path="/change-password"
+          element={
+            <ProtectedRoute>
+              <ChangePassword />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/"
+          element={
+            <ProtectedRoute>
+              <PasswordGate>
+                <Layout />
+              </PasswordGate>
+            </ProtectedRoute>
+          }
+        >
+          <Route index element={<Dashboard />} />
 
         {/* QMS */}
         <Route path="qms/capas" element={<CapaList />} />
@@ -125,8 +171,14 @@ export default function App() {
             </PermissionRoute>
           }
         />
-      </Route>
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+        </Route>
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+
+      <SessionTimeoutModal
+        isOpen={isAuthenticated && sessionTimedOut}
+        onSuccess={() => setSessionTimedOut(false)}
+      />
+    </>
   );
 }
