@@ -183,7 +183,8 @@
 ---
 
 ### TASK-030 [P2] — Table partitioning runbook (unblock TASK-010)
-- **Status:** PENDING
+- **Status:** DONE — 2026-04-22
+- **Summary:** Added `docs/architecture/partition-runbook.md` with table-by-table zero-downtime cutover plan for `audit_events`, `test_results`, `batch_record_steps`, Alembic migration template (documentation-only), rollback path, and dev clone validation plan. No partition migration executed.
 - **Depends on:** TASK-027 (PostgreSQL running — DONE)
 - **Task:** Write `docs/architecture/partition-runbook.md` with:
   1. Step-by-step cutover plan for audit_events, test_results, batch_record_steps
