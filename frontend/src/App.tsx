@@ -39,6 +39,7 @@ import EnvMonitoringList from "@/pages/env_monitoring/EnvMonitoringList";
 
 // LIMS
 import SampleList from "@/pages/lims/SampleList";
+import SampleDetail from "@/pages/lims/SampleDetail";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
@@ -154,6 +155,7 @@ export default function App() {
 
         {/* LIMS */}
         <Route path="lims/samples" element={<SampleList />} />
+        <Route path="lims/samples/:id" element={<SampleDetail />} />
         <Route path="security" element={<Security />} />
 
         {/* Admin */}

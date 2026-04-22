@@ -277,13 +277,15 @@ export const limsApi = {
   listSamples: (params?: Record<string, string | number>) =>
     api.get("/lims/samples", { params }).then((r) => r.data),
   getSample: (id: string) => api.get(`/lims/samples/${id}`).then((r) => r.data),
+  listResults: (sampleId: string) =>
+    api.get(`/lims/samples/${sampleId}/results`).then((r) => r.data),
   createSample: (data: unknown) =>
     api.post("/lims/samples", data).then((r) => r.data),
 
   addResult: (sampleId: string, data: unknown) =>
     api.post(`/lims/samples/${sampleId}/results`, data).then((r) => r.data),
-  reviewResult: (sampleId: string, resultId: string, data: unknown) =>
+  reviewResult: (_sampleId: string, resultId: string, data: unknown) =>
     api
-      .post(`/lims/samples/${sampleId}/results/${resultId}/review`, data)
+      .post(`/lims/results/${resultId}/review`, data)
       .then((r) => r.data),
 };
