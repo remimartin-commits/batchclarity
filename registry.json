@@ -166,7 +166,7 @@
     "env_sensors": { "status": "BACKLOG", "type": "INTEGRATE", "notes": "viewLinc, Vaisala — hardware polling" }
   },
 
-  "overall_platform_tier": "SKELETON",
+  "overall_platform_tier": "FUNCTIONAL",
   "target_tier_for_first_customer": "FUNCTIONAL",
   "target_tier_for_validation_submission": "VALIDATED",
 

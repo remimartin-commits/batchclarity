@@ -94,7 +94,7 @@ Encoded in TASK_QUEUE.md as TASK-035 (LOCKED).
 | G1 | At least **2 modules at FUNCTIONAL tier** in registry.json | `registry.json` — check tier fields |
 | G2 | At least **1 paying design partner** live on the GMP platform | Active Supabase tenant + signed agreement |
 | G3 | **TASK-029 DONE** (QMS FUNCTIONAL tier) | TASK_QUEUE.md status |
-| G4 | **TASK-031 DONE** (Frontend QMS CAPA demo screen) | Working UI — cannot sell without UI |
+| G4 | **TASK-031 DONE** (`frontend/src/pages/qms/CAPAList.tsx` Frontend QMS CAPA demo screen) | Working UI — cannot sell without UI |
 
 **Until all four conditions are met:**
 - Cursor builds GMP features only

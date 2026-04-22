@@ -45,10 +45,10 @@
 #   ✅ TASK-024 — LIMS services.py + tasks.py (OOS auto-trigger)
 #   ✅ TASK-025 — ENV Monitoring services.py
 #   ✅ TASK-028 — All 6 module routers wired to services (895 ins, 1413 del)
-#   🔲 TASK-029 — QMS to FUNCTIONAL tier [IN PROGRESS — Cursor]
-#   🔲 TASK-031 — Frontend QMS CAPA screen [PENDING]
-#   🔲 TASK-030 — Table partitioning runbook [PENDING]
-#   🔲 TASK-032 — Constitutional layer formalization [PENDING]
+#   ✅ TASK-029 — QMS to FUNCTIONAL tier [DONE]
+#   ✅ TASK-031 — Frontend QMS CAPA screen [DONE]
+#   ✅ TASK-030 — Table partitioning runbook [DONE]
+#   ✅ TASK-032 — Constitutional layer formalization [DONE]
 #
 # Matrix Agent completed this session (2026-04-22):
 #   ✅ TASK-033 — ALCOA+ to EU AI Act article outline written
@@ -273,7 +273,7 @@
 
 ### TASK-031 [P3] — Frontend: QMS CAPA list + create + close flow (first demo screen)
 - **Status:** DONE — 2026-04-22
-- **Summary:** Added QMS CAPA dashboard UI with list + create modal (`frontend/src/pages/qms/CapaList.tsx`), CAPA detail view with close/approve e-signature flow (`frontend/src/pages/qms/CapaDetail.tsx`), reusable shared e-sign wrapper (`frontend/src/components/shared/ESignatureModal.tsx`), and switched app routes/imports to the new Capa pages. Legacy `CAPA*.tsx` files now re-export the new components for compatibility. Frontend build and backend quality gates pass.
+- **Summary:** Added QMS CAPA dashboard UI with list + create modal (`frontend/src/pages/qms/CAPAList.tsx`), CAPA detail view with close/approve e-signature flow (`frontend/src/pages/qms/CAPADetail.tsx`), reusable shared e-sign wrapper (`frontend/src/components/shared/ESignatureModal.tsx`), and switched app routes/imports to the new CAPA pages. Legacy path compatibility shims were retained where needed. Frontend build and backend quality gates pass.
 - **Depends on:** TASK-029 (QMS FUNCTIONAL)
 - **Goal:** One working React screen — the CAPA management dashboard.
   List open CAPAs → click to view → close with e-signature modal.

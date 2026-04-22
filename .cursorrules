@@ -21,6 +21,10 @@ Foundation (core/): auth | audit | esig | workflow | documents | notify | integr
 
 ## Rule 1: No cross-module Python imports
 app.modules.X CANNOT import from app.modules.Y — ever.
+Single carved-out exception (documented and intentional):
+  - `app.modules.lims.services` may late-import `app.modules.qms.services`
+    inside function scope for the OOS -> Deviation hook only.
+  - No module-level import and no other cross-module imports are allowed.
 
   WRONG:  from app.modules.qms.models import CAPA   # inside app.modules.mes.*
   RIGHT:  store the reference as String(36) UUID and resolve at the API/service layer
