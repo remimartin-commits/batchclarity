@@ -143,16 +143,16 @@
     },
 
     "env_monitoring": {
-      "tier": "SKELETON",
+      "tier": "FUNCTIONAL",
       "gmp_name": "Environmental Monitoring",
       "ai_analogue": "Operating Environment Sentinel",
       "ai_analogue_function": "Monitors the conditions in which other modules operate. Detects environmental drift that could degrade output quality even when modules appear to be functioning correctly. Answers: 'is the operating context still within safe parameters?'",
       "path_b_capability": "MonitoringLocation = context dimension being tracked. AlertLimit = constitutional boundary for that dimension. Trend = pattern detection over time. Sensor integration = real-world signal ingestion.",
       "notes": "Trend review overdue hook + notification template. No hardware sensor integration.",
       "features": {
-        "monitoring_locations": "SKELETON",
-        "results":              "SKELETON",
-        "trends":               "SKELETON"
+        "monitoring_locations": "FUNCTIONAL",
+        "results":              "FUNCTIONAL",
+        "trends":               "FUNCTIONAL"
       },
       "blocking": ["Sensor integration connector"],
       "validated": false

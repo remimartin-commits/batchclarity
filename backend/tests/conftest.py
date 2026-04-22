@@ -36,6 +36,8 @@ from app.modules.mes.models import Product, MasterBatchRecord, MBRStep, BatchRec
 from app.modules.mes.router import router as mes_router
 from app.modules.lims.models import TestMethod, Specification, SpecificationTest, Sample, TestResult, OOSInvestigation
 from app.modules.lims.router import router as lims_router
+from app.modules.env_monitoring.models import MonitoringLocation, AlertLimit, MonitoringResult, MonitoringTrend
+from app.modules.env_monitoring.router import router as env_monitoring_router
 from app.modules.training.models import CurriculumItem, TrainingAssignment, TrainingCompletion, TrainingCurriculum
 from app.modules.training.router import router as training_router
 
@@ -84,6 +86,10 @@ async def session_maker(tmp_path: Path):
                     Sample.__table__,
                     TestResult.__table__,
                     OOSInvestigation.__table__,
+                    MonitoringLocation.__table__,
+                    AlertLimit.__table__,
+                    MonitoringResult.__table__,
+                    MonitoringTrend.__table__,
                     Equipment.__table__,
                     CalibrationRecord.__table__,
                     QualificationRecord.__table__,
@@ -215,6 +221,7 @@ def client(session_maker, seeded_db):
     api.include_router(qms_router)
     api.include_router(mes_router)
     api.include_router(lims_router)
+    api.include_router(env_monitoring_router)
     api.include_router(documents_router)
     api.include_router(training_router)
     api.include_router(equipment_router)
