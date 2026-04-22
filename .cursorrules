@@ -1,0 +1,150 @@
+# GMP Platform — Cursor Hard Rules
+# Read this file FIRST in every session. Do not override. Do not add exceptions.
+# If a rule blocks your implementation: STOP, state the conflict, ask for guidance.
+
+# ── STACK ────────────────────────────────────────────────────────────────────
+
+- Backend: Python 3.12+, FastAPI, SQLAlchemy 2.x (async), Alembic, PostgreSQL
+- Frontend: React 18+, TypeScript (strict mode), Vite
+- Testing: pytest, pytest-asyncio, httpx AsyncClient
+- Scheduler: APScheduler (AsyncIOScheduler) — 6-hour overdue check interval
+- Auth: JWT (access + refresh tokens), bcrypt
+
+# ── ARCHITECTURE ─────────────────────────────────────────────────────────────
+
+Pattern: Modular Monolith — one process, one database, strict module boundaries.
+
+Modules: qms | mes | equipment | training | env_monitoring | lims
+Foundation (core/): auth | audit | esig | workflow | documents | notify | integration
+
+# ── MODULE BOUNDARY RULES — HARD STOPS ───────────────────────────────────────
+
+## Rule 1: No cross-module Python imports
+app.modules.X CANNOT import from app.modules.Y — ever.
+
+  WRONG:  from app.modules.qms.models import CAPA   # inside app.modules.mes.*
+  RIGHT:  store the reference as String(36) UUID and resolve at the API/service layer
+
+Foundation imports from any module are ALLOWED:
+  OK:  from app.core.auth.models import User
+  OK:  from app.core.notify.services import NotificationService
+
+## Rule 2: No cross-module ForeignKey constraints
+ForeignKey() references may only point to:
+  (a) tables owned by the SAME module
+  (b) foundation layer tables (users, sites, workflow_instances, electronic_signatures, documents)
+
+  WRONG:  deviation_id: Mapped[str] = mapped_column(ForeignKey("deviations.id"))   # MES → QMS
+  RIGHT:  linked_deviation_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+
+## Rule 3: Hook registry — core/tasks.py has zero module model imports
+  WRONG:  from app.modules.qms.models import CAPA   # inside core/tasks.py
+  RIGHT:  each module owns its tasks.py; main.py registers hooks at startup
+
+# ── GMP / REGULATORY — NON-NEGOTIABLE ────────────────────────────────────────
+
+## Rule 4: Server-set timestamps only
+Audit trail fields are ALWAYS set server-side in UTC.
+  WRONG:  accepting performed_at from the request body
+  RIGHT:  performed_at = datetime.now(timezone.utc)  # set in the service layer
+
+## Rule 5: Append-only audit trail
+audit_events rows are NEVER updated or deleted.
+
+## Rule 6: Append-only test results
+Corrections require a NEW TestResult referencing the original (invalidated) result.
+
+## Rule 7: Electronic signatures require re-authentication
+  WRONG:  reusing the existing session token
+  RIGHT:  re-enter username + password via ESignatureService.sign()
+
+## Rule 8: Status flags must be maintained by the system that owns them
+If a model column exists (e.g. CalibrationRecord.is_overdue, TrainingAssignment.status="overdue"),
+the scheduler MUST write to it. Dead columns are a GMP data integrity finding.
+
+## Rule 9: Overdue hooks MUST notify — counting without alerting is broken
+After counting overdue records, call NotificationService.send_rule_based().
+The notify infrastructure is already wired. Use it.
+
+# ── SECURITY ─────────────────────────────────────────────────────────────────
+
+## Rule 10: No wildcard CORS in production
+  WRONG:  allow_origins=["*"]
+  RIGHT:  allow_origins=[settings.FRONTEND_URL]  when ENVIRONMENT != "development"
+
+## Rule 11: create_all is dev/test only
+  WRONG:  await conn.run_sync(Base.metadata.create_all)  # unconditional
+  RIGHT:  guard with  if settings.ENVIRONMENT != "production"
+
+## Rule 12: No hardcoded secrets
+All credentials via environment variables only.
+
+# ── ALEMBIC MIGRATIONS ───────────────────────────────────────────────────────
+
+## Rule 13: Every schema change needs a migration
+create_all is dev-only. Production always uses alembic upgrade head.
+
+## Rule 14: Silent exception swallowing in migrations is forbidden
+  WRONG:  except Exception: pass
+  RIGHT:  except Exception as exc: logger.warning("Could not drop %s: %s", constraint, exc)
+
+## Rule 15: Every migration must have a valid downgrade()
+
+# ── QUALITY GATES ────────────────────────────────────────────────────────────
+
+These must pass after every change. CI blocks on failure.
+
+  pytest backend/tests/test_architecture_boundaries.py   # boundary enforcement
+  python chaos.py                                         # reliability simulation
+
+When adding a new module:
+  1. Add it to MODULE_NAMES in test_architecture_boundaries.py
+  2. Create modules/<name>/tasks.py with an overdue hook
+  3. Import and register the hook in main.py lifespan
+  4. Wire hook to NotificationService
+
+# ── ECOSYSTEM SCOPE — WHAT WE BUILD vs. WHAT WE WIRE ────────────────────────
+
+## Rule 16: Check before building — Replace vs. Integrate
+
+Before implementing any new system or integration, determine which category it belongs to.
+
+### ALWAYS REPLACE (build natively in the platform)
+- QMS (TrackWise, Veeva QMS, MasterControl, ETQ, Qualio)
+- MES / EBR (Syncade, Werum PAS-X, Rockwell PharmaSuite, Tulip)
+- LIMS (LabVantage, STARLIMS, LabWare, SampleManager)
+- Document Control (Veeva QDocs, Documentum, SharePoint GxP)
+- Training / LMS (Veeva Training, ComplianceWire, MasterControl Training)
+- Equipment / CMMS / Calibration (Blue Mountain RAM, SAP PM functionality)
+- ELN (Benchling, IDBS, Signals Notebook)
+- SPC / Analytics (JMP, Minitab, InfinityQS) — replace with built-in dashboards
+- Serialization (TraceLink, SAP ATTP)
+- Pharmacovigilance (Argus Safety, Veeva Safety)
+- RIM (Veeva RIM)
+- ERP quality modules (SAP QM, PP, PM) — replace functionality, keep data sync
+
+### ALWAYS INTEGRATE (never build, only connect via IntegrationConnector)
+- Process Control / DCS / SCADA (DeltaV, PCS7, ABB 800xA, Experion, PlantPAx)
+- CDS / instrument firmware (Empower, Chromeleon, OpenLab, Unicorn)
+- Environmental monitoring sensors (viewLinc, Vaisala, Dickson, Monnit, Kaye)
+- ERP financial/HR layer (SAP Finance, HR, Payroll, Oracle ERP, Dynamics 365)
+- Microbiology instruments (MYLA, BacT/Alert, VITEK 2)
+- Cold chain hardware (Sensitech, Elpro, Mesa Labs, Controlant)
+- Data historians (OSIsoft PI, Aspen IP21, GE Historian) — read-only data feed
+
+### GOLDEN RULES
+1. Hardware-bound systems = ALWAYS INTEGRATE, never replace
+2. Financial/HR/Payroll layer = ALWAYS INTEGRATE, never replace
+3. Software-only QMS/LIMS/LMS/DocControl = REPLACE outright
+4. ERP quality modules = replace functionality, keep ERP data sync
+5. Validate once = foundation validated once; modules validate functionally
+
+## Rule 17: All external connections go through IntegrationConnector
+Never hardcode third-party API calls in module code.
+Use core/integration/models.py (IntegrationConnector, IntegrationDataFeed) for all
+external system connections. This is the single point of integration governance.
+
+# ── IF AMBIGUOUS — STOP AND ASK ──────────────────────────────────────────────
+
+Do not guess. Do not pick the simpler path without flagging the trade-off.
+State: (a) the ambiguity, (b) the two options, (c) the trade-off. Then wait.

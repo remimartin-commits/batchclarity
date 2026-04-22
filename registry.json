@@ -1,0 +1,143 @@
+{
+  "_schema": "gmp-module-registry/v1",
+  "_updated": "2026-04-21",
+  "_maintainer": "Matrix Agent",
+  "_note": "Cursor must update this file when a module advances a tier. Matrix Agent verifies tier claims at each 3-day review.",
+
+  "_tier_definitions": {
+    "SKELETON": "Models + router exists. No real business logic. Not usable.",
+    "FUNCTIONAL": "All 5 module files complete. Core workflows work end-to-end. Tests pass. Overdue hook wired and notifying.",
+    "HARDENED": "Edge cases handled. Performance queries (SQL COUNT, no full-table loads). Status flags maintained. CORS/auth reviewed.",
+    "VALIDATED": "URS written. IQ/OQ protocols executed. Alembic migrations tested on copy of prod DB. Part 11 audit trail verified."
+  },
+
+  "_advancement_requirements": {
+    "SKELETON_to_FUNCTIONAL": [
+      "models.py, router.py, services.py, tasks.py, schemas.py all present",
+      "At least 3 API endpoints working end-to-end",
+      "Overdue hook wired and calling NotificationService",
+      "Architecture boundary tests still passing",
+      "Module added to MODULE_NAMES in test_architecture_boundaries.py"
+    ],
+    "FUNCTIONAL_to_HARDENED": [
+      "No full-table loads in tasks.py (SQL COUNT only)",
+      "Status flags maintained by scheduler (is_overdue, status='overdue' etc.)",
+      "All FK columns have index=True",
+      "Pagination on all list endpoints (max 100)",
+      "Site isolation enforced on every query",
+      "Back-fill prevention on all execution fields",
+      "All write endpoints create AuditEvent records",
+      "chaos.py still passing after module is added to real test scope"
+    ],
+    "HARDENED_to_VALIDATED": [
+      "URS document written in docs/urs/<module>.md",
+      "IQ protocol executed and signed off",
+      "OQ protocol executed and signed off",
+      "Alembic migrations tested on a copy of production database",
+      "21 CFR Part 11 audit trail spot-checked by QA manager",
+      "E-signature flows tested with real credentials"
+    ]
+  },
+
+  "modules": {
+    "foundation": {
+      "tier": "HARDENED",
+      "submodules": {
+        "auth":        { "tier": "HARDENED", "notes": "JWT, RBAC, sessions, password history, site model" },
+        "audit":       { "tier": "HARDENED", "notes": "Append-only AuditEvent. Server timestamps." },
+        "esig":        { "tier": "HARDENED", "notes": "Re-authentication required. Meaning + date captured." },
+        "workflow":    { "tier": "HARDENED", "notes": "WorkflowDefinition, WorkflowInstance, history." },
+        "documents":   { "tier": "HARDENED", "notes": "Version-controlled. Approval-gated. Periodic review hook wired." },
+        "notify":      { "tier": "FUNCTIONAL", "notes": "send_rule_based; scheduler rules; overdue hooks notify." },
+        "integration": { "tier": "SKELETON", "notes": "SAP/DeltaV connector stubs in app/core/integration/connectors/ (TASK-014/015)." }
+      },
+      "blocking": ["Table partitioning (TASK-010) before extreme volume in audit_events"],
+      "validated": false
+    },
+
+    "qms": {
+      "tier": "SKELETON",
+      "notes": "CAPA overdue hook notifies. Remaining business depth TBD.",
+      "features": {
+        "capa":           "SKELETON",
+        "deviation":      "SKELETON",
+        "change_control": "SKELETON"
+      },
+      "blocking": [],
+      "validated": false
+    },
+
+    "mes": {
+      "tier": "SKELETON",
+      "notes": "MBR, EBR, BatchRecordStep. Cross-module FK removed (linked_deviation_id). Back-fill prevention in place. Needs e-sig on release.",
+      "features": {
+        "master_batch_record": "SKELETON",
+        "batch_record":        "SKELETON",
+        "batch_release":       "SKELETON"
+      },
+      "blocking": ["E-signature on batch release not yet verified"],
+      "validated": false
+    },
+
+    "equipment": {
+      "tier": "SKELETON",
+      "notes": "Calibration SQL counts; is_overdue maintained by hook; batch notification (TASK-002/003).",
+      "features": {
+        "calibration":    "SKELETON",
+        "qualification":  "SKELETON",
+        "maintenance":    "SKELETON"
+      },
+      "blocking": [],
+      "validated": false
+    },
+
+    "training": {
+      "tier": "SKELETON",
+      "notes": "Assignment status=overdue from hook; SQL counts; notifications (TASK-002/003).",
+      "features": {
+        "curriculum":   "SKELETON",
+        "assignments":  "SKELETON",
+        "completions":  "SKELETON"
+      },
+      "blocking": [],
+      "validated": false
+    },
+
+    "lims": {
+      "tier": "SKELETON",
+      "notes": "TestMethod, Spec, Sample, TestResult, OOSInvestigation. Append-only TestResult in place. OOS auto-trigger not wired.",
+      "features": {
+        "test_methods":      "SKELETON",
+        "specifications":    "SKELETON",
+        "samples":           "SKELETON",
+        "test_results":      "SKELETON",
+        "oos_investigation": "SKELETON"
+      },
+      "blocking": ["OOS auto-trigger on fail result not implemented"],
+      "validated": false
+    },
+
+    "env_monitoring": {
+      "tier": "SKELETON",
+      "notes": "Trend review overdue hook + notification template (TASK-011). No hardware sensor integration.",
+      "features": {
+        "monitoring_locations": "SKELETON",
+        "results":              "SKELETON",
+        "trends":               "SKELETON"
+      },
+      "blocking": ["Sensor integration connector"],
+      "validated": false
+    }
+  },
+
+  "integrations": {
+    "sap_erp":   { "status": "STUB", "type": "INTEGRATE", "task": "TASK-014", "notes": "SAPRestConnector class" },
+    "deltav":    { "status": "STUB", "type": "INTEGRATE", "task": "TASK-015", "notes": "DeltaVHistorianConnector class" },
+    "cds":       { "status": "BACKLOG", "type": "INTEGRATE", "notes": "Empower, Chromeleon — instrument connectors" },
+    "env_sensors": { "status": "BACKLOG", "type": "INTEGRATE", "notes": "viewLinc, Vaisala — hardware polling" }
+  },
+
+  "overall_platform_tier": "SKELETON",
+  "target_tier_for_first_customer": "FUNCTIONAL",
+  "target_tier_for_validation_submission": "VALIDATED"
+}

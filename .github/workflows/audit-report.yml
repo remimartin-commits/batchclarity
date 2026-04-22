@@ -1,0 +1,71 @@
+name: 3-Day Audit Report
+
+on:
+  schedule:
+    - cron: "0 4 */3 * *"   # Every 3 days at 04:00 UTC
+  workflow_dispatch:          # Manual trigger
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 50    # Enough history for 3-day git log
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install fastapi "uvicorn[standard]" httpx pydantic \
+                      pytest pytest-asyncio pytest-json-report \
+                      sqlalchemy alembic asyncpg
+
+      - name: Run architecture boundary tests
+        run: |
+          cd backend
+          python -m pytest tests/test_architecture_boundaries.py \
+            -v --tb=short --no-header \
+            --json-report --json-report-file=../audit/.arch_test_results.json \
+          || true    # Don't exit — capture result in report
+
+      - name: Run chaos suite
+        run: python chaos.py || true    # Don't exit — capture result in report
+
+      - name: Generate audit report
+        run: python scripts/generate_audit_report.py
+
+      - name: Upload audit report
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit-report-${{ github.run_id }}-${{ github.run_attempt }}
+          path: audit/reports/
+          retention-days: 90
+
+      - name: Upload chaos report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chaos-report-${{ github.run_id }}
+          path: chaos/last-report.json
+          retention-days: 90
+
+      - name: Check health status
+        run: |
+          REPORT=$(ls audit/reports/*-audit.json | sort | tail -1)
+          HEALTH=$(python -c "import json; d=json.load(open('$REPORT')); print(d['health']['overall'])")
+          echo "Health: $HEALTH"
+          if [ "$HEALTH" = "RED" ]; then
+            echo "::error::Audit report health is RED — architecture violations or tests failing"
+            exit 1
+          fi
+          if [ "$HEALTH" = "AMBER" ]; then
+            echo "::warning::Audit report health is AMBER — review recommended"
+          fi

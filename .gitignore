@@ -1,0 +1,69 @@
+# ── Credentials & Secrets (NEVER commit these) ────────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+dist/
+build/
+*.egg-info/
+.eggs/
+*.egg
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+coverage.xml
+*.cover
+
+# ── Node / Frontend ───────────────────────────────────────────────────────────
+node_modules/
+frontend/dist/
+frontend/.vite/
+.npm
+*.tsbuildinfo
+
+# ── Docker ────────────────────────────────────────────────────────────────────
+# Keep docker-compose.yml but ignore any local overrides
+docker-compose.override.yml
+docker-compose.local.yml
+
+# ── Database ──────────────────────────────────────────────────────────────────
+*.sqlite3
+*.db
+
+# ── Alembic ───────────────────────────────────────────────────────────────────
+# Keep migrations tracked; ignore local dev artefacts
+alembic/versions/__pycache__/
+
+# ── IDE / OS ──────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ── Logs ─────────────────────────────────────────────────────────────────────
+*.log
+logs/
+
+# ── Validation artefacts (executed protocols are GMP records — keep as PDFs) ──
+validation/executed/
