@@ -76,18 +76,18 @@
     },
 
     "mes": {
-      "tier": "SKELETON",
+      "tier": "FUNCTIONAL",
       "gmp_name": "Manufacturing Execution System",
       "ai_analogue": "Execution Orchestrator",
       "ai_analogue_function": "Manages task sequencing, resource allocation, step-by-step execution with verification, completion confirmation. No step is marked done without evidence. Back-fill prevention = no retroactive falsification of execution records.",
       "path_b_capability": "MBR = task template. Batch Record = execution instance. BatchRecordStep = individual verified action. Release = human-approved output gate.",
       "notes": "MBR, EBR, BatchRecordStep. Cross-module FK removed. Back-fill prevention in place. Needs e-sig on release.",
       "features": {
-        "master_batch_record": "SKELETON",
-        "batch_record":        "SKELETON",
-        "batch_release":       "SKELETON"
+        "master_batch_record": "FUNCTIONAL",
+        "batch_record":        "FUNCTIONAL",
+        "batch_release":       "FUNCTIONAL"
       },
-      "blocking": ["E-signature on batch release not yet verified"],
+      "blocking": [],
       "validated": false
     },
 

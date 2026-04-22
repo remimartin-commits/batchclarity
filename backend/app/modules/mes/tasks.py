@@ -19,6 +19,7 @@ from sqlalchemy import select
 
 from app.core.audit.service import AuditService
 from app.core.database import async_session_factory
+from app.core.notify.service import NotificationService
 from app.modules.mes.models import BatchRecord, BatchRecordStep
 
 logger = logging.getLogger(__name__)
@@ -53,6 +54,7 @@ async def check_stale_batches() -> None:
             )
             stale_batches = result.scalars().all()
 
+            stale_without_recent_activity = 0
             for br in stale_batches:
                 # Check if any step was recorded recently (within 48h)
                 recent_step = await session.execute(
@@ -64,6 +66,7 @@ async def check_stale_batches() -> None:
                 if recent_step.scalar_one_or_none():
                     continue  # Active — skip
 
+                stale_without_recent_activity += 1
                 logger.warning(
                     "Stale batch detected: %s (started %s, no activity since %s)",
                     br.batch_number,
@@ -86,6 +89,13 @@ async def check_stale_batches() -> None:
                     full_name=_SYSTEM_FULL_NAME,
                     ip_address=None,
                     is_system_action=True,
+                )
+
+            if stale_without_recent_activity > 0:
+                await NotificationService.send_rule_based(
+                    session,
+                    "mes_stale_batches",
+                    {"count": stale_without_recent_activity},
                 )
 
             await session.commit()

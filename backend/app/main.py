@@ -38,6 +38,7 @@ from app.modules.equipment.tasks import check_calibration_due
 from app.modules.training.tasks import check_overdue_training
 from app.core.documents.tasks import check_document_reviews
 from app.modules.lims.tasks import check_open_oos_investigations
+from app.modules.mes.tasks import check_stale_batches
 
 # ── Import all models so SQLAlchemy/Alembic can discover every table ──────────
 # Foundation
@@ -120,6 +121,7 @@ async def lifespan(app: FastAPI):
     register_overdue_hook("equipment_calibration", check_calibration_due)
     register_overdue_hook("training_overdue", check_overdue_training)
     register_overdue_hook("document_reviews", check_document_reviews)
+    register_overdue_hook("mes_stale_batches", check_stale_batches)
     register_overdue_hook("lims_oos_stale", check_open_oos_investigations)
     #    run_overdue_checks() fires every 6 hours and handles:
     #      - Overdue CAPA notifications

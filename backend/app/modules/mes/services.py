@@ -179,8 +179,7 @@ async def create_mbr(
     )
 
     await db.commit()
-    await db.refresh(mbr)
-    return mbr
+    return await get_mbr_or_404(db, mbr.id)
 
 
 async def list_mbrs(
@@ -345,8 +344,7 @@ async def create_batch_record(
     )
 
     await db.commit()
-    await db.refresh(br)
-    return br
+    return await get_batch_record_or_404(db, br.id)
 
 
 async def list_batch_records(
@@ -357,7 +355,7 @@ async def list_batch_records(
     skip: int = 0,
     limit: int = 50,
 ) -> list[BatchRecord]:
-    query = select(BatchRecord)
+    query = select(BatchRecord).options(selectinload(BatchRecord.steps))
     if status_filter:
         query = query.where(BatchRecord.status == status_filter)
     if product_id:

@@ -32,6 +32,8 @@ from app.modules.equipment.models import CalibrationRecord, Equipment, Maintenan
 from app.modules.equipment.router import router as equipment_router
 from app.modules.qms.models import CAPA, CAPAAction, ChangeControl, Deviation
 from app.modules.qms.router import router as qms_router
+from app.modules.mes.models import Product, MasterBatchRecord, MBRStep, BatchRecord, BatchRecordStep
+from app.modules.mes.router import router as mes_router
 from app.modules.training.models import CurriculumItem, TrainingAssignment, TrainingCompletion, TrainingCurriculum
 from app.modules.training.router import router as training_router
 
@@ -69,6 +71,11 @@ async def session_maker(tmp_path: Path):
                     CurriculumItem.__table__,
                     TrainingAssignment.__table__,
                     TrainingCompletion.__table__,
+                    Product.__table__,
+                    MasterBatchRecord.__table__,
+                    MBRStep.__table__,
+                    BatchRecord.__table__,
+                    BatchRecordStep.__table__,
                     Equipment.__table__,
                     CalibrationRecord.__table__,
                     QualificationRecord.__table__,
@@ -198,6 +205,7 @@ def client(session_maker, seeded_db):
     api.include_router(auth_router)
     api.include_router(users_router)
     api.include_router(qms_router)
+    api.include_router(mes_router)
     api.include_router(documents_router)
     api.include_router(training_router)
     api.include_router(equipment_router)
