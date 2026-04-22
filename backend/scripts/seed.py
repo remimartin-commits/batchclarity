@@ -624,6 +624,19 @@ NOTIFICATION_TEMPLATES: list[dict] = [
         ),
         "channels": ["email"],
     },
+    {
+        "code": "lims_oos_investigation_stale",
+        "event_type": "lims.oos_investigation_stale",
+        "name": "LIMS: OOS investigation open more than 14 days",
+        "subject": "LIMS: {{count}} OOS investigation(s) open past 14 days",
+        "body": (
+            "The LIMS OOS check found {{count}} out-of-specification investigation(s) "
+            "that are not closed and are older than 14 days.\n\n"
+            "Site scope: {{site_id}}\n\n"
+            "Review, escalate, or close per laboratory investigation SOP."
+        ),
+        "channels": ["email"],
+    },
 ]
 
 
@@ -846,6 +859,7 @@ async def seed() -> None:
             "training_assignment_overdue",
             "document_review_due",
             "env_monitoring_review_overdue",
+            "lims_oos_investigation_stale",
         )
         admin_user = (
             await session.execute(select(User).where(User.username == "admin"))

@@ -26,7 +26,7 @@
 #   ✅ TASK-021 — MES services.py + tasks.py written (anti-backfill, e-sig release)
 #   ✅ TASK-022 — Equipment services.py
 #   ✅ TASK-023 — Training services.py
-#   ⬜ TASK-024 — LIMS services.py + tasks.py (OOS auto-trigger)
+#   ✅ TASK-024 — LIMS services.py + tasks.py (OOS auto-trigger)
 #   ⬜ TASK-025 — ENV Monitoring services.py
 #
 # IMPORTANT: qms/services.py, mes/services.py, mes/tasks.py are WRITTEN but
@@ -110,7 +110,8 @@
 ---
 
 ### TASK-024 [P1] — LIMS module: write services.py + tasks.py (OOS auto-trigger on failed result)
-- **Status:** PENDING
+- **Status:** DONE — 2026-04-24
+- **Summary:** Added `app/modules/lims/services.py` (samples, server-time test results, `importlib` load of `qms.services` for OOS auto-deviation, append-only `correct_test_result` with `is_invalidated`/`corrects_result_id`, OOS investigation create/close with e-sig) and `lims/tasks.py` (`check_open_oos_investigations`). Migration `20260424_lims_test_result_correction_fields`, `NotificationService.send_rule_based` implementation, `main.py` hook `lims_oos_stale`, seed template `lims_oos_investigation_stale`. Architecture + chaos pass.
 - **Depends on:** TASK-021 (done)
 - **Why P1:** OOS auto-trigger is a GMP requirement. LIMS has NO tasks.py.
 - **What to implement in app/modules/lims/services.py:**

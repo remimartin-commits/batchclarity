@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from datetime import datetime
 from typing import Optional
 
@@ -35,7 +35,9 @@ class TestResultCreate(BaseModel):
     result_value: str
     result_numeric: Optional[float] = None
     unit: Optional[str] = None
-    tested_at: datetime
+    tested_at: datetime  # ignored in service — timestamps are server-set (ALCOA)
+    is_oos: bool = False
+    spec_limit: Optional[str] = None  # for auto-deviation text when is_oos
 
 
 class TestResultOut(BaseModel):
@@ -50,9 +52,20 @@ class TestResultOut(BaseModel):
     status: str
     is_oos: bool
     linked_investigation_id: Optional[str]
+    is_invalidated: bool = False
+    corrects_result_id: Optional[str] = None
     created_at: datetime
     class Config:
         from_attributes = True
+
+
+class TestResultCorrectionCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(..., min_length=5)
+    result_value: str
+    result_numeric: Optional[float] = None
+    unit: Optional[str] = None
 
 
 class TestResultReviewRequest(BaseModel):
@@ -72,6 +85,16 @@ class OOSInvestigationOut(BaseModel):
     created_at: datetime
     class Config:
         from_attributes = True
+
+
+class OOSInvestigationCloseRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    password: str = Field(..., description="Re-auth for 21 CFR Part 11")
+    final_disposition: str
+    disposition_justification: str = Field(..., min_length=10)
+    root_cause: Optional[str] = None
+    corrective_action: Optional[str] = None
 
 
 class SpecificationCreate(BaseModel):

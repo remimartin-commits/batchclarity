@@ -123,3 +123,57 @@ class NotificationService:
         log.status = "sent" if success else "failed"
         log.sent_at = datetime.now(timezone.utc) if success else None
         return log
+
+    @staticmethod
+    async def send_rule_based(
+        db: AsyncSession,
+        rule_code: str,
+        context: dict,
+    ) -> int:
+        """
+        Resolve template by `NotificationTemplate.code` and send one log per active rule
+        (same body/subject rendering as `send_event`). Returns count of successful sends.
+        """
+        tmpl_result = await db.execute(
+            select(NotificationTemplate).where(NotificationTemplate.code == rule_code)
+        )
+        template = tmpl_result.scalar_one_or_none()
+        if not template or not template.is_active:
+            return 0
+        rule_result = await db.execute(
+            select(NotificationRule).where(
+                NotificationRule.template_id == template.id,
+                NotificationRule.is_active == True,  # noqa: E712
+            )
+        )
+        rules = rule_result.scalars().all()
+        sent = 0
+        for rule in rules:
+            address = rule.recipient_address
+            if not address:
+                continue
+            subject = NotificationService._render(
+                template.subject_template or "", context
+            )
+            body = NotificationService._render(template.body_template, context)
+            log = NotificationLog(
+                template_id=template.id,
+                recipient_user_id=rule.recipient_user_id,
+                recipient_address=address,
+                channel=rule.channel,
+                subject=subject,
+                body=body,
+                record_type="notification_rule",
+                record_id=template.id,
+                status="pending",
+            )
+            db.add(log)
+            await db.flush([log])
+            success = await NotificationService._dispatch(
+                rule.channel, address, subject, body
+            )
+            log.status = "sent" if success else "failed"
+            log.sent_at = datetime.now(timezone.utc) if success else None
+            if success:
+                sent += 1
+        return sent

@@ -125,6 +125,12 @@ class TestResult(Base):
         String(36), ForeignKey("electronic_signatures.id"), nullable=True
     )
 
+    # Append-only / correction chain (ALCOA Original) — same module FK allowed
+    is_invalidated: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    corrects_result_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("test_results.id"), nullable=True, index=True
+    )
+
     sample: Mapped["Sample"] = relationship("Sample", back_populates="results")
 
 
