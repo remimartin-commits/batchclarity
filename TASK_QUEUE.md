@@ -210,7 +210,8 @@
   This is the demo screen for the first customer conversation.
 
 ### TASK-032 [P3] — Constitutional layer: formalize .cursorrules as enforced module
-- **Status:** PENDING
+- **Status:** DONE — 2026-04-22
+- **Summary:** Added `backend/app/core/constitutional/` with startup rule loading from `.cursorrules` and authenticated endpoint `GET /api/v1/constitutional/rules`. Wired router into `api/v1/router.py`, loaded rules during app lifespan in `main.py`, added API contract coverage, and added root `CODEOWNERS` requiring owner review for `.cursorrules` and `BUILDING_RULES.md` edits.
 - **Goal:** Create `core/constitutional/` module. Load .cursorrules at startup.
   Expose `GET /constitutional/rules` listing immutable constraints.
   Add GitHub branch protection: PRs that modify .cursorrules or BUILDING_RULES.md

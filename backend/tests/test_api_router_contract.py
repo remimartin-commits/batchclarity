@@ -101,3 +101,10 @@ def test_documents_training_equipment_routes_are_registered():
         _route("/api/v1/equipment/{eq_id}/status", "PATCH")
         or _route("/equipment/{eq_id}/status", "PATCH")
     ) is not None
+
+
+def test_constitutional_routes_are_registered():
+    assert (
+        _route("/api/v1/constitutional/rules", "GET")
+        or _route("/constitutional/rules", "GET")
+    ) is not None

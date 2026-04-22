@@ -7,6 +7,7 @@ from fastapi import APIRouter
 # Foundation
 from app.core.auth.router import router as auth_router
 from app.core.documents.router import router as documents_router
+from app.core.constitutional.router import router as constitutional_router
 from app.api.v1.users import router as users_router
 
 # QMS
@@ -32,6 +33,7 @@ api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(auth_router)
 api_router.include_router(users_router)
 api_router.include_router(documents_router)
+api_router.include_router(constitutional_router)
 api_router.include_router(qms_router)
 api_router.include_router(mes_router)
 api_router.include_router(equipment_router)

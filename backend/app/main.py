@@ -31,6 +31,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from app.core.config import settings
 from app.core.database import engine, Base
 from app.core.tasks import run_overdue_checks, clear_overdue_hooks, register_overdue_hook
+from app.core.constitutional.service import load_constitutional_rules
 from app.api.v1.router import api_router
 from app.modules.qms.tasks import check_overdue_capas
 from app.modules.equipment.tasks import check_calibration_due
@@ -106,6 +107,12 @@ async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     logger.info("Database tables verified/created.")
+    constitutional_snapshot = load_constitutional_rules()
+    logger.info(
+        "Constitutional rules loaded: %s rule(s) from %s",
+        constitutional_snapshot["rule_count"],
+        constitutional_snapshot["source_path"],
+    )
 
     # 2. Register and start background jobs
     clear_overdue_hooks()
