@@ -637,6 +637,22 @@ NOTIFICATION_TEMPLATES: list[dict] = [
         ),
         "channels": ["email"],
     },
+    {
+        "code": "env_monitoring_alert_exceeded",
+        "event_type": "env_monitoring.alert_exceeded",
+        "name": "EM result exceeded alert limit",
+        "subject": "EM ALERT: {{location_code}} {{parameter}} = {{value}} {{unit}} (AL {{alert_limit}})",
+        "body": (
+            "An environmental monitoring result exceeded the alert limit.\n\n"
+            "Location: {{location_code}}\n"
+            "Parameter: {{parameter}}\n"
+            "Value: {{value}} {{unit}}\n"
+            "Alert limit: {{alert_limit}}\n"
+            "Site: {{site_id}}\n\n"
+            "Investigate per EM program; a placeholder deviation reference was recorded on the result."
+        ),
+        "channels": ["email"],
+    },
 ]
 
 
@@ -860,6 +876,7 @@ async def seed() -> None:
             "document_review_due",
             "env_monitoring_review_overdue",
             "lims_oos_investigation_stale",
+            "env_monitoring_alert_exceeded",
         )
         admin_user = (
             await session.execute(select(User).where(User.username == "admin"))

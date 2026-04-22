@@ -27,7 +27,7 @@
 #   ✅ TASK-022 — Equipment services.py
 #   ✅ TASK-023 — Training services.py
 #   ✅ TASK-024 — LIMS services.py + tasks.py (OOS auto-trigger)
-#   ⬜ TASK-025 — ENV Monitoring services.py
+#   ✅ TASK-025 — ENV Monitoring services.py
 #
 # IMPORTANT: qms/services.py, mes/services.py, mes/tasks.py are WRITTEN but
 # not yet committed. Cursor's FIRST action must be to commit them.
@@ -138,7 +138,8 @@
 ---
 
 ### TASK-025 [P1] — ENV Monitoring module: write services.py (Location + Result + Alert enforcement)
-- **Status:** PENDING
+- **Status:** DONE — 2026-04-25
+- **Summary:** Added `app/modules/env_monitoring/services.py`: `create_location` (site match), `record_result` (server timestamps, alert/action limits, `exceeds_alert_limit` + loose `linked_deviation_id` + `send_event` + `ALERT_LIMIT_EXCEEDED` audit when value > AL), `create_trend`, `review_trend` with `ESignatureService`, paginated `list_results`. Model+migration: `exceeds_alert_limit`, trend `status`; seed `env_monitoring_alert_exceeded` template+rule. Architecture + chaos pass.
 - **Depends on:** TASK-021 (done)
 - **What to implement in app/modules/env_monitoring/services.py:**
   - `create_location(db, data, user, ip_address) -> MonitoringLocation`

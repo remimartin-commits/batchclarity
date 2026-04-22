@@ -89,6 +89,7 @@ class MonitoringResult(Base):
 
     # Investigation
     investigation_required: Mapped[bool] = mapped_column(Boolean, default=False)
+    exceeds_alert_limit: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     linked_deviation_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     comments: Mapped[str | None] = mapped_column(Text, nullable=True)
 
@@ -106,6 +107,8 @@ class MonitoringTrend(Base):
     parameter: Mapped[str] = mapped_column(String(100), nullable=False)
     period_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     period_end: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    # Statuses: pending | reviewed
     sample_count: Mapped[int] = mapped_column(Integer, nullable=False)
     alert_exceedances: Mapped[int] = mapped_column(Integer, default=0)
     action_exceedances: Mapped[int] = mapped_column(Integer, default=0)

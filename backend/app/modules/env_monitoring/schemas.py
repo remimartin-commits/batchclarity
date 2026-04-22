@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from datetime import datetime
 from typing import Optional
 
@@ -67,6 +67,7 @@ class MonitoringResultOut(BaseModel):
     alert_limit_at_time: Optional[float]
     action_limit_at_time: Optional[float]
     investigation_required: bool
+    exceeds_alert_limit: bool = False
     linked_deviation_id: Optional[str]
     comments: Optional[str]
     created_at: datetime
@@ -80,3 +81,23 @@ class SamplingPlanCreate(BaseModel):
     sampling_method: str
     sample_volume_or_time: Optional[str] = None
     assigned_to_role: Optional[str] = None
+
+
+class MonitoringTrendCreate(BaseModel):
+    parameter: str
+    period_start: datetime
+    period_end: datetime
+    sample_count: int = Field(..., ge=0)
+    alert_exceedances: int = 0
+    action_exceedances: int = 0
+    mean_value: Optional[float] = None
+    max_value: Optional[float] = None
+    trend_conclusion: Optional[str] = None
+    linked_capa_id: Optional[str] = None
+
+
+class MonitoringTrendReviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    password: str = Field(..., description="Re-auth for 21 CFR Part 11")
+    trend_conclusion: str = Field(..., min_length=10, description="Signed trend conclusion / disposition")
