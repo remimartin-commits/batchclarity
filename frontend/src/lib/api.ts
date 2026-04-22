@@ -258,13 +258,13 @@ export const envMonitoringApi = {
     api.post("/env-monitoring/locations", data).then((r) => r.data),
   setAlertLimits: (locationId: string, data: unknown) =>
     api
-      .post(`/env-monitoring/locations/${locationId}/alert-limits`, data)
+      .post(`/env-monitoring/locations/${locationId}/limits`, data)
       .then((r) => r.data),
 
   listResults: (params?: Record<string, string | number>) =>
     api.get("/env-monitoring/results", { params }).then((r) => r.data),
-  recordResult: (data: unknown) =>
-    api.post("/env-monitoring/results", data).then((r) => r.data),
+  recordResult: (locationId: string, data: unknown) =>
+    api.post(`/env-monitoring/locations/${locationId}/results`, data).then((r) => r.data),
 };
 
 // ── LIMS ─────────────────────────────────────────────────────────────────────
