@@ -168,7 +168,8 @@
 ---
 
 ### TASK-029 [P2] — Advance QMS to FUNCTIONAL tier in registry.json
-- **Status:** PENDING
+- **Status:** DONE — 2026-04-22
+- **Summary:** Verified QMS module file set (`models.py`, `router.py`, `services.py`, `tasks.py`, `schemas.py`), confirmed hook wiring in `app/main.py`, upgraded overdue CAPA hook to SQL `COUNT` + `NotificationService.send_rule_based("qms_capa_overdue")`, ran architecture boundary test and full pytest suite, then advanced `registry.json` `qms.tier` to `FUNCTIONAL`.
 - **Depends on:** TASK-020, TASK-028
 - **Checklist** (from registry.json _advancement_requirements):
   - [ ] models.py, router.py, services.py, tasks.py, schemas.py all present

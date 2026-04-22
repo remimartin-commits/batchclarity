@@ -60,16 +60,16 @@
     },
 
     "qms": {
-      "tier": "SKELETON",
+      "tier": "FUNCTIONAL",
       "gmp_name": "Quality Management System",
       "ai_analogue": "Quality / Alignment Guard",
       "ai_analogue_function": "Checks outputs against intent. Flags deviation from expected behaviour. Enforces standards. Manages corrective actions. The module that asks: 'did this output actually match what was requested?'",
       "path_b_capability": "Deviation = detected misalignment. CAPA = corrective action loop. Change Control = proposed modification requiring human approval before implementation.",
       "notes": "CAPA overdue hook notifies. Remaining business depth TBD.",
       "features": {
-        "capa":           "SKELETON",
-        "deviation":      "SKELETON",
-        "change_control": "SKELETON"
+        "capa":           "FUNCTIONAL",
+        "deviation":      "FUNCTIONAL",
+        "change_control": "FUNCTIONAL"
       },
       "blocking": [],
       "validated": false
