@@ -105,6 +105,17 @@ class ReadAndUnderstoodRequest(BaseModel):
     notes: Optional[str] = None
 
 
+class TrainingCompletionRequest(BaseModel):
+    """Completion with mandatory e-signature (read-and-understood) per Part 11."""
+    model_config = ConfigDict(extra="forbid")
+
+    password: str = Field(..., description="Re-auth for 21 CFR Part 11")
+    completion_method: str  # self_study | classroom | on_job
+    assessment_score: Optional[int] = None
+    passed: bool
+    notes: Optional[str] = None
+
+
 class TrainingMatrixRow(BaseModel):
     user_id: str
     full_name: str

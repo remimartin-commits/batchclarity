@@ -24,8 +24,8 @@
 #   ✅ TASK-027 — Supabase PostgreSQL confirmed + Alembic migrated to head
 #   ✅ TASK-020 — QMS services.py written (CAPA + Deviation + ChangeControl)
 #   ✅ TASK-021 — MES services.py + tasks.py written (anti-backfill, e-sig release)
-#   ⬜ TASK-022 — Equipment services.py
-#   ⬜ TASK-023 — Training services.py
+#   ✅ TASK-022 — Equipment services.py
+#   ✅ TASK-023 — Training services.py
 #   ⬜ TASK-024 — LIMS services.py + tasks.py (OOS auto-trigger)
 #   ⬜ TASK-025 — ENV Monitoring services.py
 #
@@ -75,7 +75,8 @@
 ---
 
 ### TASK-022 [P1] — Equipment module: write services.py (Calibration + Qualification + Maintenance)
-- **Status:** PENDING
+- **Status:** DONE — 2026-04-22
+- **Summary:** Added `app/modules/equipment/services.py`: equipment CRUD helpers, `record_calibration` with server `performed_at`, `CALIBRATION_RECORDED` audit, `next_calibration_due` from interval, clearing stale `CalibrationRecord.is_overdue`, paginated `list_calibration_history`, and `record_qualification`. Set `pythonpath = ..` in `backend/pytest.ini` so `core.boundary_engine` loads for architecture tests. Chaos + boundary tests pass.
 - **Depends on:** TASK-021 (done)
 - **What to implement in app/modules/equipment/services.py:**
   - `create_equipment(db, data, user, ip_address) -> Equipment`
@@ -93,7 +94,8 @@
 ---
 
 ### TASK-023 [P1] — Training module: write services.py (Curriculum + Assignment + Completion)
-- **Status:** PENDING
+- **Status:** DONE — 2026-04-22
+- **Summary:** Added `app/modules/training/services.py` with `create_curriculum`, `assign_training` (one row per user × each curriculum item; duplicate user/item rejected), `complete_training` using `ESignatureService.sign` with meaning `read_and_understood` plus `TRAINING_COMPLETED` audit, and `list_assignments` / `get_overdue_count` scoped by curriculum `site_id`. Added `TrainingCompletionRequest` in `schemas.py` (password + completion fields). Boundary tests and chaos pass.
 - **Depends on:** TASK-021 (done)
 - **What to implement in app/modules/training/services.py:**
   - `create_curriculum(db, data, user, ip_address) -> TrainingCurriculum`
