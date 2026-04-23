@@ -117,6 +117,7 @@ class BatchRecordStepExecute(BaseModel):
     recorded_value: Optional[str] = None
     is_na: bool = False
     comments: Optional[str] = None
+    password: str = Field(..., description="Re-auth for EBR step sign-off")
 
 
 class BatchRecordStepOut(BaseModel):

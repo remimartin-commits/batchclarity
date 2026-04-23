@@ -44,6 +44,7 @@ class EquipmentStatusUpdate(BaseModel):
 
     status: str  # qualified | out_of_service | under_maintenance | retired
     reason: str = Field(..., min_length=5)
+    password: str = Field(..., description="Re-authentication for status transition e-signature")
 
 
 # ── Calibration ───────────────────────────────────────────────────────────────

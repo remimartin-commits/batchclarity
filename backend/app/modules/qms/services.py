@@ -341,6 +341,14 @@ async def update_capa_action(
     if not action:
         raise HTTPException(status_code=404, detail="CAPA action not found.")
 
+    old_status = action.status
+    new_status = payload.get("status")
+    if new_status is not None and payload.get("password") is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Password is required when changing CAPA action status.",
+        )
+
     allowed_fields = {"description", "assignee_id", "due_date", "status", "completion_evidence"}
     for field, value in payload.items():
         if field not in allowed_fields:
@@ -360,6 +368,40 @@ async def update_capa_action(
             full_name=user.full_name,
             role_at_time=role_at_time,
             ip_address=ip_address,
+        )
+
+    if new_status is not None and new_status != old_status:
+        sig = await ESignatureService.sign(
+            db,
+            user_id=str(user.id),
+            password=payload["password"],
+            record_type="capa_action",
+            record_id=action_id,
+            record_version="1.0",
+            record_data={
+                "capa_id": capa_id,
+                "description": action.description,
+                "status_before": old_status,
+            },
+            meaning=f"status_{new_status}",
+            meaning_display=f"CAPA action status -> {new_status}",
+            ip_address=ip_address or "127.0.0.1",
+            comments=payload.get("completion_evidence"),
+        )
+        await AuditService.log(
+            db,
+            action="TRANSITION",
+            record_type="capa_action",
+            record_id=action_id,
+            module="qms",
+            human_description=f"CAPA action status transitioned {old_status} -> {new_status}",
+            user_id=str(user.id),
+            username=user.username,
+            full_name=user.full_name,
+            role_at_time=role_at_time,
+            ip_address=ip_address,
+            old_value={"status": old_status},
+            new_value={"status": new_status, "signature_id": str(sig.id)},
         )
 
     await AuditService.log(

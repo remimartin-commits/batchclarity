@@ -79,7 +79,12 @@ def test_mes_product_mbr_batch_execution_release_flow(client, seeded_db):
     executed_step = client.patch(
         f"/api/v1/mes/batch-records/{batch_id}/steps/{step_id}",
         headers=_auth_header(token),
-        json={"recorded_value": "100.0", "is_na": False, "comments": "OK"},
+        json={
+            "recorded_value": "100.0",
+            "is_na": False,
+            "comments": "OK",
+            "password": seeded_db["admin_password"],
+        },
     )
     assert executed_step.status_code == 200, executed_step.text
     assert executed_step.json()["status"] in {"completed", "deviated"}

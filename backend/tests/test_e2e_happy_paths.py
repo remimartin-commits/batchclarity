@@ -122,7 +122,12 @@ def test_e2e_happy_paths_all_modules(client, seeded_db, monkeypatch, session_mak
     execute = client.patch(
         f"/api/v1/mes/batch-records/{batch_id}/steps/{step_id}",
         headers=_auth(token),
-        json={"recorded_value": "done", "is_na": False, "comments": "e2e"},
+        json={
+            "recorded_value": "done",
+            "is_na": False,
+            "comments": "e2e",
+            "password": seeded_db["admin_password"],
+        },
     )
     assert execute.status_code == 200, execute.text
 

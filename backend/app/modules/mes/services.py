@@ -225,6 +225,7 @@ async def sign_mbr(
     Password re-authentication required (21 CFR Part 11 §11.50).
     """
     mbr = await get_mbr_or_404(db, mbr_id)
+    old_status = mbr.status
 
     sig = await ESignatureService.sign(
         db,
@@ -244,6 +245,24 @@ async def sign_mbr(
         mbr.approved_by_id = str(user.id)
         mbr.status = "approved"
         mbr.effective_date = _utcnow()
+
+    await AuditService.log(
+        db,
+        action="TRANSITION",
+        record_type="master_batch_record",
+        record_id=mbr_id,
+        module="mes",
+        human_description=(
+            f"MBR {mbr.mbr_number} transitioned {old_status} -> {mbr.status} via meaning '{data.meaning}'"
+        ),
+        user_id=str(user.id),
+        username=user.username,
+        full_name=user.full_name,
+        ip_address=ip_address,
+        old_value={"status": old_status},
+        new_value={"status": mbr.status},
+        reason=data.comments,
+    )
 
     await db.commit()
     return {
@@ -424,6 +443,7 @@ async def execute_step(
     mbr_step = mbr_step_result.scalar_one_or_none()
 
     # Record — timestamp is server-set, never from client
+    old_status = step.status
     step.recorded_value = data.recorded_value
     step.is_na = data.is_na
     step.comments = data.comments
@@ -446,6 +466,25 @@ async def execute_step(
         except (ValueError, TypeError):
             step.is_within_limits = None
 
+    sig = await ESignatureService.sign(
+        db,
+        user_id=str(user.id),
+        password=data.password,
+        record_type="batch_record_step",
+        record_id=step.id,
+        record_version="1.0",
+        record_data={
+            "batch_record_id": br_id,
+            "step_number": step.step_number,
+            "status_before": old_status,
+            "recorded_value": data.recorded_value,
+        },
+        meaning="step_signoff",
+        meaning_display="EBR Step Sign-off",
+        ip_address=ip_address or "127.0.0.1",
+        comments=data.comments,
+    )
+
     await AuditService.log(
         db,
         action="EXECUTE",
@@ -460,7 +499,8 @@ async def execute_step(
         username=user.username,
         full_name=user.full_name,
         ip_address=ip_address,
-        new_value=data.recorded_value,
+        old_value={"status": old_status},
+        new_value={"status": step.status, "signature_id": str(sig.id)},
     )
 
     await db.commit()
@@ -483,6 +523,7 @@ async def release_batch(
     All immutable after signing — no further updates permitted to release fields.
     """
     br = await get_batch_record_or_404(db, br_id)
+    old_status = br.status
 
     if data.decision not in ("released", "rejected"):
         raise HTTPException(
@@ -535,6 +576,8 @@ async def release_batch(
         username=user.username,
         full_name=user.full_name,
         ip_address=ip_address,
+        old_value={"status": old_status},
+        new_value={"status": br.status},
         reason=data.comments,
     )
 

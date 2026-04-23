@@ -102,14 +102,23 @@ def test_training_assignment_detail_complete_and_ack(client, seeded_db):
     forbidden_complete = client.post(
         f"/api/v1/training/assignments/{assignment_id}/complete",
         headers=_auth_header(admin_token),
-        json={"completion_method": "self_study", "passed": True},
+        json={
+            "completion_method": "self_study",
+            "passed": True,
+            "password": seeded_db["admin_password"],
+        },
     )
     assert forbidden_complete.status_code == 403, forbidden_complete.text
 
     complete = client.post(
         f"/api/v1/training/assignments/{assignment_id}/complete",
         headers=_auth_header(operator_token),
-        json={"completion_method": "self_study", "assessment_score": 95, "passed": True},
+        json={
+            "completion_method": "self_study",
+            "assessment_score": 95,
+            "passed": True,
+            "password": seeded_db["operator_password"],
+        },
     )
     assert complete.status_code == 200, complete.text
 
@@ -142,14 +151,22 @@ def test_equipment_status_guardrails_and_records(client, seeded_db):
     invalid_transition = client.patch(
         f"/api/v1/equipment/{eq_id}/status",
         headers=_auth_header(token),
-        json={"status": "pre_qualification", "reason": "Attempt invalid transition"},
+        json={
+            "status": "pre_qualification",
+            "reason": "Attempt invalid transition",
+            "password": seeded_db["admin_password"],
+        },
     )
     assert invalid_transition.status_code == 400, invalid_transition.text
 
     valid_transition = client.patch(
         f"/api/v1/equipment/{eq_id}/status",
         headers=_auth_header(token),
-        json={"status": "under_maintenance", "reason": "Scheduled maintenance window"},
+        json={
+            "status": "under_maintenance",
+            "reason": "Scheduled maintenance window",
+            "password": seeded_db["admin_password"],
+        },
     )
     assert valid_transition.status_code == 200, valid_transition.text
 

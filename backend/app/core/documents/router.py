@@ -193,6 +193,7 @@ async def sign_version(
     version = result.scalar_one_or_none()
     if not version:
         raise HTTPException(status_code=404, detail="Document version not found.")
+    old_status = version.status
 
     sig = await ESignatureService.sign(
         db,
@@ -243,5 +244,23 @@ async def sign_version(
             doc.is_obsolete = True
     else:
         raise HTTPException(status_code=400, detail="Unsupported signature meaning.")
+
+    await AuditService.log(
+        db,
+        action="TRANSITION",
+        record_type="document_version",
+        record_id=version_id,
+        module="documents",
+        human_description=(
+            f"Document version {version.version_number} transitioned {old_status} -> {version.status}"
+        ),
+        user_id=current_user.id,
+        username=current_user.username,
+        full_name=current_user.full_name,
+        ip_address=get_client_ip(request),
+        old_value={"status": old_status},
+        new_value={"status": version.status, "signature_id": str(sig.id)},
+        reason=body.comments,
+    )
 
     return {"signature_id": sig.id, "signed_at": sig.signed_at, "new_status": version.status}

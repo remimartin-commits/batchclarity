@@ -82,6 +82,7 @@ class TrainingCompletionCreate(BaseModel):
     completion_method: str  # self_study | classroom | on_job
     assessment_score: Optional[int] = None
     passed: bool
+    password: str = Field(..., description="Re-auth for 21 CFR Part 11")
     notes: Optional[str] = None
 
 

@@ -521,6 +521,7 @@ async def complete_assignment_simple(
     item = item_result.scalar_one_or_none()
 
     now = _utcnow()
+    old_status = assignment.status
     expires: datetime | None = None
     if item and item.validity_period_months:
         expires = now + timedelta(days=item.validity_period_months * 30)
@@ -535,6 +536,24 @@ async def complete_assignment_simple(
         notes=data.notes,
     )
     db.add(completion)
+    sig = await ESignatureService.sign(
+        db,
+        user_id=str(user.id),
+        password=data.password,
+        record_type="training_assignment",
+        record_id=assignment_id,
+        record_version="1.0",
+        record_data={
+            "assignment_id": assignment_id,
+            "completion_method": data.completion_method,
+            "passed": data.passed,
+            "status_before": old_status,
+        },
+        meaning="training_complete",
+        meaning_display="Training Completion",
+        ip_address=ip_address or "127.0.0.1",
+        comments=data.notes,
+    )
     assignment.status = "completed" if data.passed else "pending"
 
     await AuditService.log(
@@ -551,6 +570,8 @@ async def complete_assignment_simple(
         username=user.username,
         full_name=user.full_name,
         ip_address=ip_address,
+        old_value={"status": old_status},
+        new_value={"status": assignment.status, "signature_id": str(sig.id)},
     )
     await db.flush([completion])
     await db.commit()
@@ -584,6 +605,7 @@ async def read_and_understood_sign_off(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Assignment already completed."
         )
+    old_status = assignment.status
 
     sig = await ESignatureService.sign(
         db,
@@ -610,6 +632,24 @@ async def read_and_understood_sign_off(
     )
     db.add(completion)
     assignment.status = "completed"
+
+    await AuditService.log(
+        db,
+        action="TRANSITION",
+        record_type="training_assignment",
+        record_id=assignment_id,
+        module="training",
+        human_description=(
+            f"Assignment transitioned {old_status} -> {assignment.status} via read-and-understood sign-off"
+        ),
+        user_id=str(user.id),
+        username=user.username,
+        full_name=user.full_name,
+        ip_address=ip_address,
+        old_value={"status": old_status},
+        new_value={"status": assignment.status, "signature_id": str(sig.id)},
+        reason=data.notes,
+    )
     await db.commit()
 
     return {

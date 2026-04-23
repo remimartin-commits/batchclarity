@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.audit.service import AuditService
 from app.core.auth.models import User
+from app.core.esig.service import ESignatureService
 from app.modules.equipment.models import (
     Equipment,
     CalibrationRecord,
@@ -299,6 +300,19 @@ async def update_equipment_status(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid status transition: {old_status} -> {data.status}",
         )
+    await ESignatureService.sign(
+        db,
+        user_id=str(user.id),
+        password=data.password,
+        record_type="equipment",
+        record_id=equipment_id,
+        record_version="1.0",
+        record_data={"equipment_id": eq.equipment_id, "status_before": old_status},
+        meaning=data.status,
+        meaning_display=f"Equipment status -> {data.status}",
+        ip_address=ip_address or "127.0.0.1",
+        comments=data.reason,
+    )
     eq.status = data.status
     await AuditService.log_field_change(
         db,

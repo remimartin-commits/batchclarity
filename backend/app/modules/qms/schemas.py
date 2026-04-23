@@ -122,6 +122,7 @@ class CAPAActionUpdate(BaseModel):
     due_date: Optional[datetime] = None
     status: Optional[CAPAActionStatus] = None
     completion_evidence: Optional[str] = None
+    password: Optional[str] = None
 
 
 class CAPAOut(BaseModel):

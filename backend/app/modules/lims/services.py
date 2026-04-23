@@ -304,6 +304,7 @@ async def review_test_result(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Test result not found."
         )
+    old_status = result_obj.status
 
     sig = await ESignatureService.sign(
         db,
@@ -358,6 +359,21 @@ async def review_test_result(
             ip_address=ip_address,
         )
 
+    await AuditService.log(
+        db,
+        action="TRANSITION",
+        record_type="test_result",
+        record_id=result_id,
+        module="lims",
+        human_description=f"Test result transitioned {old_status} -> {result_obj.status}",
+        user_id=str(user.id),
+        username=user.username,
+        full_name=user.full_name,
+        ip_address=ip_address,
+        old_value={"status": old_status},
+        new_value={"status": result_obj.status, "signature_id": str(sig.id)},
+        reason=data.comments,
+    )
     await db.commit()
     return {
         "signature_id": sig.id,
@@ -540,6 +556,7 @@ async def close_oos_investigation(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Investigation already closed.",
         )
+    old_status = inv.status
 
     ip = ip_address or "127.0.0.1"
     await ESignatureService.sign(
@@ -577,6 +594,9 @@ async def close_oos_investigation(
         full_name=user.full_name,
         ip_address=ip_address,
         site_id=sample.site_id,
+        old_value={"status": old_status},
+        new_value={"status": inv.status},
+        reason=data.disposition_justification,
     )
     await db.commit()
     await db.refresh(inv)
