@@ -104,8 +104,12 @@ class Deviation(Base):
 
     deviation_number: Mapped[str] = mapped_column(String(50), unique=True, nullable=False, index=True)
     title: Mapped[str] = mapped_column(String(500), nullable=False)
-    deviation_type: Mapped[str] = mapped_column(String(50), nullable=False)  # planned|unplanned
-    category: Mapped[str] = mapped_column(String(100), nullable=False)  # process|equipment|material|environmental
+    deviation_type: Mapped[str] = mapped_column(String(50), nullable=False)  # process|equipment|environmental|material|documentation|personnel|laboratory|other
+    gmp_impact_classification: Mapped[str] = mapped_column(String(20), nullable=False, default="major")
+    potential_patient_impact: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    potential_patient_impact_justification: Mapped[str | None] = mapped_column(Text, nullable=True)
+    batches_affected: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    product_affected: Mapped[str | None] = mapped_column(String(255), nullable=True)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     detected_during: Mapped[str] = mapped_column(String(100), nullable=False)
     detected_by_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False)
@@ -114,12 +118,21 @@ class Deviation(Base):
     product_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     risk_level: Mapped[str] = mapped_column(String(20), nullable=False, default="medium")
     immediate_action: Mapped[str | None] = mapped_column(Text, nullable=True)
+    immediate_containment_actions: Mapped[str | None] = mapped_column(Text, nullable=True)
+    immediate_containment_actions_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    root_cause_category: Mapped[str | None] = mapped_column(String(100), nullable=True)
     root_cause: Mapped[str | None] = mapped_column(Text, nullable=True)
     batch_disposition: Mapped[str | None] = mapped_column(String(50), nullable=True)  # release|reject|pending
     linked_capa_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("capas.id"), nullable=True)
+    requires_capa: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    regulatory_notification_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    regulatory_authority_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    regulatory_notification_deadline: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    no_capa_needed_confirmed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    no_capa_needed_justification: Mapped[str | None] = mapped_column(Text, nullable=True)
     site_id: Mapped[str] = mapped_column(String(36), ForeignKey("sites.id"), nullable=False)
     owner_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False)
-    current_status: Mapped[str] = mapped_column(String(50), nullable=False, default="draft")
+    current_status: Mapped[str] = mapped_column(String(50), nullable=False, default="open")
     workflow_instance_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("workflow_instances.id"), nullable=True)
 
 

@@ -11,7 +11,7 @@ from app.modules.qms import services as qms_services
 from app.modules.qms.schemas import (
     CAPACreate, CAPAOut, CAPAUpdate, CAPASignRequest,
     CAPAActionCreate, CAPAActionOut, CAPAActionUpdate, CAPAAuditEventOut,
-    DeviationCreate, DeviationOut, DeviationUpdate,
+    DeviationCreate, DeviationOut, DeviationUpdate, DeviationAuditEventOut,
     ChangeControlCreate, ChangeControlOut, ChangeControlUpdate,
 )
 
@@ -188,6 +188,15 @@ async def transition_deviation(
     return await qms_services.transition_deviation(
         db, deviation_id, action, current_user, get_client_ip(request)
     )
+
+
+@router.get("/deviations/{deviation_id}/audit-trail", response_model=list[DeviationAuditEventOut])
+async def list_deviation_audit_trail(
+    deviation_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await qms_services.list_deviation_audit_events(db, deviation_id)
 
 
 # ── Change control ─────────────────────────────────────────────────────────

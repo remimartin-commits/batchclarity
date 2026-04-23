@@ -15,7 +15,7 @@ export default function TrainingList() {
   });
 
   const completeMutation = useMutation({
-    mutationFn: async (payload: { assignmentId: string; password: string; comments: string }) => {
+    mutationFn: async (payload: { assignmentId: string; username: string; password: string; comments: string }) => {
       await trainingApi.readAndUnderstood(payload.assignmentId, {
         password: payload.password,
         notes: payload.comments || "Read and understood acknowledgement.",
@@ -133,10 +133,11 @@ export default function TrainingList() {
         meaning="read_and_understood"
         availableMeanings={["read_and_understood"]}
         onClose={() => setSignAssignmentId(null)}
-        onConfirm={async ({ password, comments }) => {
+        onConfirm={async ({ username, password, comments }) => {
           if (!signAssignmentId) return;
           await completeMutation.mutateAsync({
             assignmentId: signAssignmentId,
+            username,
             password,
             comments,
           });

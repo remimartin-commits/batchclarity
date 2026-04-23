@@ -190,6 +190,8 @@ class CAPASignRequest(BaseModel):
     password: str = Field(..., description="User password — required for re-authentication per 21 CFR Part 11")
     meaning: str = Field(..., description="open|investigation|action_plan_approved|in_progress|effectiveness_check|closed")
     comments: Optional[str] = None
+    no_capa_needed_confirmed: Optional[bool] = None
+    no_capa_needed_justification: Optional[str] = None
 
 
 class CAPAAuditEventOut(BaseModel):
@@ -204,16 +206,51 @@ class CAPAAuditEventOut(BaseModel):
 
 # ── Deviation Schemas ─────────────────────────────────────────────────────────
 
+class DeviationStatus(str, Enum):
+    open = "open"
+    under_investigation = "under_investigation"
+    pending_approval = "pending_approval"
+    closed = "closed"
+
+
+class DeviationType(str, Enum):
+    process = "process"
+    equipment = "equipment"
+    environmental = "environmental"
+    material = "material"
+    documentation = "documentation"
+    personnel = "personnel"
+    laboratory = "laboratory"
+    other = "other"
+
+
+class GMPImpactClassification(str, Enum):
+    critical = "critical"
+    major = "major"
+    minor = "minor"
+
 class DeviationCreate(BaseModel):
     title: str = Field(..., min_length=5)
-    deviation_type: str  # planned | unplanned
-    category: str
+    deviation_type: DeviationType
+    gmp_impact_classification: GMPImpactClassification = GMPImpactClassification.major
+    potential_patient_impact: bool = False
+    potential_patient_impact_justification: Optional[str] = None
+    batches_affected: list[str] = []
+    product_affected: Optional[str] = None
     description: str = Field(..., min_length=20)
     detected_during: str
     detection_date: datetime
     batch_number: Optional[str] = None
     risk_level: RiskLevel = RiskLevel.medium
     immediate_action: Optional[str] = None
+    immediate_containment_actions: str = Field(..., min_length=10)
+    root_cause_category: Optional[RootCauseCategory] = None
+    root_cause: Optional[str] = None
+    linked_capa_id: Optional[str] = None
+    requires_capa: bool = False
+    regulatory_notification_required: bool = False
+    regulatory_authority_name: Optional[str] = None
+    regulatory_notification_deadline: Optional[datetime] = None
 
 
 class DeviationOut(BaseModel):
@@ -221,13 +258,27 @@ class DeviationOut(BaseModel):
     deviation_number: str
     title: str
     deviation_type: str
-    category: str
+    gmp_impact_classification: str
+    potential_patient_impact: bool
+    potential_patient_impact_justification: Optional[str]
+    batches_affected: list[str] = []
+    product_affected: Optional[str]
     description: str
     risk_level: str
     current_status: str
     detection_date: datetime
     batch_number: Optional[str]
+    immediate_containment_actions: Optional[str]
+    immediate_containment_actions_at: Optional[datetime]
+    root_cause_category: Optional[str]
+    root_cause: Optional[str]
     linked_capa_id: Optional[str]
+    requires_capa: bool
+    regulatory_notification_required: bool
+    regulatory_authority_name: Optional[str]
+    regulatory_notification_deadline: Optional[datetime]
+    no_capa_needed_confirmed: bool
+    no_capa_needed_justification: Optional[str]
     created_at: datetime
 
     class Config:
@@ -238,11 +289,34 @@ class DeviationUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     description: Optional[str] = Field(default=None, min_length=20)
+    gmp_impact_classification: Optional[GMPImpactClassification] = None
+    potential_patient_impact: Optional[bool] = None
+    potential_patient_impact_justification: Optional[str] = None
+    batches_affected: Optional[list[str]] = None
+    product_affected: Optional[str] = None
     risk_level: Optional[RiskLevel] = None
     immediate_action: Optional[str] = None
+    immediate_containment_actions: Optional[str] = None
+    root_cause_category: Optional[RootCauseCategory] = None
     root_cause: Optional[str] = None
+    requires_capa: Optional[bool] = None
     current_status: Optional[str] = None
     linked_capa_id: Optional[str] = None
+    regulatory_notification_required: Optional[bool] = None
+    regulatory_authority_name: Optional[str] = None
+    regulatory_notification_deadline: Optional[datetime] = None
+    no_capa_needed_confirmed: Optional[bool] = None
+    no_capa_needed_justification: Optional[str] = None
+
+
+class DeviationAuditEventOut(BaseModel):
+    user_full_name: str
+    role_at_time: str
+    action: str
+    old_value: Optional[Any]
+    new_value: Optional[Any]
+    timestamp_utc: datetime
+    ip_address: Optional[str]
 
 
 # ── Change Control Schemas ────────────────────────────────────────────────────

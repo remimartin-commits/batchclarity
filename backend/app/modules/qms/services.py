@@ -90,9 +90,9 @@ async def _require_permission(db: AsyncSession, user: User, permission_code: str
 
 # State machine: maps action -> (required_from_state, next_state)
 _DEVIATION_TRANSITIONS: dict[str, tuple[str, str]] = {
-    "submit": ("draft", "under_review"),
-    "approve": ("under_review", "approved"),
-    "close":   ("approved", "closed"),
+    "submit": ("open", "under_investigation"),
+    "approve": ("under_investigation", "pending_approval"),
+    "close": ("pending_approval", "closed"),
 }
 
 _CHANGE_CONTROL_TRANSITIONS: dict[str, tuple[str, str]] = {
@@ -528,14 +528,63 @@ async def create_deviation(
     """
     count_result = await db.execute(select(func.count()).select_from(Deviation))
     count = (count_result.scalar() or 0) + 1
+    role_at_time = await _role_at_time(db, str(user.id))
+
+    if data.potential_patient_impact and not (data.potential_patient_impact_justification or "").strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Patient impact justification is required when potential patient impact is Yes.",
+        )
+    if data.regulatory_notification_required:
+        if not (data.regulatory_authority_name or "").strip():
+            raise HTTPException(status_code=400, detail="Regulatory authority name is required.")
+        if data.regulatory_notification_deadline is None:
+            raise HTTPException(status_code=400, detail="Regulatory notification deadline is required.")
 
     deviation = Deviation(
         deviation_number=_next_number("DEV", count),
         detected_by_id=str(user.id),
         owner_id=str(user.id),
         site_id=str(user.site_id) if getattr(user, "site_id", None) else "default",
-        **data.model_dump(),
+        current_status="open",
+        immediate_containment_actions_at=_utcnow(),
+        batches_affected=data.batches_affected or ([data.batch_number] if data.batch_number else []),
+        immediate_action=data.immediate_action or data.immediate_containment_actions,
+        **data.model_dump(exclude={"batches_affected", "immediate_action"}),
     )
+    if not deviation.immediate_containment_actions:
+        raise HTTPException(status_code=400, detail="Immediate containment actions are required.")
+
+    if deviation.requires_capa and not deviation.linked_capa_id:
+        capa_count_result = await db.execute(select(func.count()).select_from(CAPA))
+        capa_count = (capa_count_result.scalar() or 0) + 1
+        auto_capa = CAPA(
+            capa_number=_next_number("CAPA", capa_count),
+            title=f"Auto CAPA for deviation {deviation.deviation_number}",
+            capa_type="corrective",
+            source="deviation",
+            source_record_id=deviation.id,
+            risk_level=deviation.risk_level,
+            product_impact=False,
+            patient_safety_impact=deviation.potential_patient_impact,
+            regulatory_reportable=deviation.regulatory_notification_required,
+            problem_description=(
+                f"Auto-created from deviation {deviation.deviation_number}. "
+                f"{deviation.description[:400]}"
+            ),
+            immediate_actions=deviation.immediate_containment_actions,
+            root_cause=deviation.root_cause,
+            root_cause_category=deviation.root_cause_category,
+            department=user.department or "Quality",
+            identified_date=_utcnow(),
+            owner_id=str(user.id),
+            site_id=str(user.site_id) if getattr(user, "site_id", None) else "default",
+            current_status="open",
+        )
+        db.add(auto_capa)
+        await db.flush([auto_capa])
+        deviation.linked_capa_id = auto_capa.id
+
     db.add(deviation)
     await db.flush([deviation])
 
@@ -552,12 +601,14 @@ async def create_deviation(
         user_id=str(user.id),
         username=user.username,
         full_name=user.full_name,
+        role_at_time=role_at_time,
         ip_address=ip_address,
         record_snapshot_after={
             "deviation_number": deviation.deviation_number,
             "deviation_type": deviation.deviation_type,
             "risk_level": deviation.risk_level,
-            "category": deviation.category,
+            "gmp_impact_classification": deviation.gmp_impact_classification,
+            "linked_capa_id": deviation.linked_capa_id,
         },
     )
 
@@ -598,8 +649,31 @@ async def update_deviation(
 ) -> Deviation:
     """Partial update with field-level audit trail per changed field."""
     deviation = await get_deviation_or_404(db, deviation_id)
+    role_at_time = await _role_at_time(db, str(user.id))
+    changes = data.model_dump(exclude_none=True)
 
-    for field, new_val in data.model_dump(exclude_none=True).items():
+    if changes.get("potential_patient_impact", deviation.potential_patient_impact):
+        new_justification = changes.get(
+            "potential_patient_impact_justification",
+            deviation.potential_patient_impact_justification,
+        )
+        if not (new_justification or "").strip():
+            raise HTTPException(
+                status_code=400,
+                detail="Patient impact justification is required when potential patient impact is Yes.",
+            )
+
+    if changes.get("regulatory_notification_required", deviation.regulatory_notification_required):
+        auth_name = changes.get("regulatory_authority_name", deviation.regulatory_authority_name)
+        deadline = changes.get(
+            "regulatory_notification_deadline", deviation.regulatory_notification_deadline
+        )
+        if not (auth_name or "").strip():
+            raise HTTPException(status_code=400, detail="Regulatory authority name is required.")
+        if deadline is None:
+            raise HTTPException(status_code=400, detail="Regulatory notification deadline is required.")
+
+    for field, new_val in changes.items():
         old_val = getattr(deviation, field, None)
         setattr(deviation, field, new_val)
         await AuditService.log_field_change(
@@ -608,13 +682,47 @@ async def update_deviation(
             record_id=deviation_id,
             module="qms",
             field_name=field,
-            old_value=str(old_val),
-            new_value=str(new_val),
+            old_value=old_val,
+            new_value=new_val,
             user_id=str(user.id),
             username=user.username,
             full_name=user.full_name,
+            role_at_time=role_at_time,
             ip_address=ip_address,
         )
+
+    if (
+        changes.get("requires_capa", deviation.requires_capa)
+        and not changes.get("linked_capa_id", deviation.linked_capa_id)
+    ):
+        capa_count_result = await db.execute(select(func.count()).select_from(CAPA))
+        capa_count = (capa_count_result.scalar() or 0) + 1
+        auto_capa = CAPA(
+            capa_number=_next_number("CAPA", capa_count),
+            title=f"Auto CAPA for deviation {deviation.deviation_number}",
+            capa_type="corrective",
+            source="deviation",
+            source_record_id=deviation.id,
+            risk_level=deviation.risk_level,
+            product_impact=False,
+            patient_safety_impact=deviation.potential_patient_impact,
+            regulatory_reportable=deviation.regulatory_notification_required,
+            problem_description=(
+                f"Auto-created from deviation {deviation.deviation_number}. "
+                f"{deviation.description[:400]}"
+            ),
+            immediate_actions=deviation.immediate_containment_actions,
+            root_cause=deviation.root_cause,
+            root_cause_category=deviation.root_cause_category,
+            department=user.department or "Quality",
+            identified_date=_utcnow(),
+            owner_id=str(user.id),
+            site_id=deviation.site_id,
+            current_status="open",
+        )
+        db.add(auto_capa)
+        await db.flush([auto_capa])
+        deviation.linked_capa_id = auto_capa.id
 
     await db.commit()
     await db.refresh(deviation)
@@ -628,13 +736,47 @@ async def sign_deviation(
     user: User,
     ip_address: str,
 ) -> dict:
-    """Apply e-signature to a Deviation. Requires qms.deviations.sign permission."""
+    """Apply e-signature to a Deviation transition with strict state machine."""
     await _require_permission(db, user, "qms.deviations.sign")
     deviation = await get_deviation_or_404(db, deviation_id)
+    role_at_time = await _role_at_time(db, str(user.id))
+
+    meaning_to_transition = {
+        "under_investigation": ("open", "under_investigation"),
+        "pending_approval": ("under_investigation", "pending_approval"),
+        "closed": ("pending_approval", "closed"),
+    }
+    if data.meaning not in meaning_to_transition:
+        raise HTTPException(status_code=400, detail=f"Unsupported transition meaning '{data.meaning}'.")
+    required_from, next_state = meaning_to_transition[data.meaning]
+    if deviation.current_status != required_from:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Transition '{data.meaning}' requires state '{required_from}', "
+                f"but deviation is '{deviation.current_status}'."
+            ),
+        )
+    if data.username is None:
+        raise HTTPException(status_code=400, detail="Username is required for deviation signatures.")
+    if next_state == "closed" and not deviation.linked_capa_id:
+        if data.no_capa_needed_confirmed is not True:
+            raise HTTPException(
+                status_code=400,
+                detail="Closing without linked CAPA requires explicit no-CAPA confirmation.",
+            )
+        if not (data.no_capa_needed_justification or "").strip():
+            raise HTTPException(
+                status_code=400,
+                detail="Closing without linked CAPA requires justification.",
+            )
+        deviation.no_capa_needed_confirmed = True
+        deviation.no_capa_needed_justification = data.no_capa_needed_justification
 
     sig = await ESignatureService.sign(
         db,
         user_id=str(user.id),
+        username=data.username,
         password=data.password,
         record_type="deviation",
         record_id=deviation_id,
@@ -648,6 +790,28 @@ async def sign_deviation(
         meaning_display=data.meaning.replace("_", " ").title(),
         ip_address=ip_address,
         comments=data.comments,
+    )
+    old_state = deviation.current_status
+    deviation.current_status = next_state
+
+    await AuditService.log(
+        db,
+        action="TRANSITION",
+        record_type="deviation",
+        record_id=deviation_id,
+        module="qms",
+        human_description=(
+            f"Deviation {deviation.deviation_number} transitioned "
+            f"{old_state} -> {next_state} via e-signature '{data.meaning}'"
+        ),
+        user_id=str(user.id),
+        username=user.username,
+        full_name=user.full_name,
+        role_at_time=role_at_time,
+        ip_address=ip_address,
+        old_value={"current_status": old_state},
+        new_value={"current_status": next_state},
+        reason=data.comments,
     )
 
     await db.commit()
@@ -672,37 +836,35 @@ async def transition_deviation(
     Each transition requires the matching permission (qms.deviations.<action>).
     Every transition is written to the audit trail.
     """
-    if action not in _DEVIATION_TRANSITIONS:
-        raise HTTPException(status_code=404, detail=f"Unknown transition action: '{action}'.")
-
-    permission_code = f"qms.deviations.{action}"
-    await _require_permission(db, user, permission_code)
-
-    deviation = await get_deviation_or_404(db, deviation_id)
-    old_state = deviation.current_status
-    deviation.current_status = _apply_transition(old_state, action, _DEVIATION_TRANSITIONS)
-
-    _, next_state = _DEVIATION_TRANSITIONS[action]
-    await AuditService.log(
-        db,
-        action="TRANSITION",
-        record_type="deviation",
-        record_id=deviation_id,
-        module="qms",
-        human_description=(
-            f"Deviation {deviation.deviation_number} transitioned "
-            f"{old_state} -> {next_state} via '{action}'"
-        ),
-        user_id=str(user.id),
-        username=user.username,
-        full_name=user.full_name,
-        ip_address=ip_address,
-        reason=f"action={action}",
+    raise HTTPException(
+        status_code=400,
+        detail="Deprecated endpoint. Use /deviations/{id}/sign with username+password for transitions.",
     )
 
-    await db.commit()
-    await db.refresh(deviation)
-    return deviation
+
+async def list_deviation_audit_events(db: AsyncSession, deviation_id: str) -> list[dict]:
+    await get_deviation_or_404(db, deviation_id)
+    result = await db.execute(
+        select(AuditEvent)
+        .where(
+            AuditEvent.record_id == deviation_id,
+            AuditEvent.record_type == "deviation",
+        )
+        .order_by(AuditEvent.event_at.desc())
+    )
+    events = result.scalars().all()
+    return [
+        {
+            "user_full_name": evt.full_name,
+            "role_at_time": evt.role_at_time or "Unassigned",
+            "action": evt.action,
+            "old_value": evt.old_value,
+            "new_value": evt.new_value,
+            "timestamp_utc": evt.event_at,
+            "ip_address": evt.ip_address,
+        }
+        for evt in events
+    ]
 
 
 # ── CHANGE CONTROL ────────────────────────────────────────────────────────────
@@ -937,8 +1099,8 @@ async def create_deviation_from_oos(
     """
     data = DeviationCreate(
         title=f"OOS Result: {test_name} (sample {sample_id})",
-        deviation_type="unplanned",
-        category="process",
+        deviation_type="laboratory",
+        gmp_impact_classification="major",
         description=(
             f"Out-of-specification result detected automatically.\n"
             f"Test: {test_name}\n"
@@ -951,6 +1113,7 @@ async def create_deviation_from_oos(
         detection_date=_utcnow(),
         risk_level="high",
         immediate_action="Sample quarantined pending investigation. Batch on hold.",
+        immediate_containment_actions="Sample quarantined pending investigation. Batch on hold.",
     )
     deviation = await create_deviation(db, data, system_user, ip_address=None)
 

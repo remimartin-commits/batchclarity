@@ -123,6 +123,8 @@ export const qmsApi = {
     api.patch(`/qms/deviations/${id}`, data).then((r) => r.data),
   signDeviation: (id: string, data: unknown) =>
     api.post(`/qms/deviations/${id}/sign`, data).then((r) => r.data),
+  listDeviationAuditTrail: (id: string) =>
+    api.get(`/qms/deviations/${id}/audit-trail`).then((r) => r.data),
   transitionDeviation: (id: string, action: "submit" | "approve" | "close") =>
     api.post(`/qms/deviations/${id}/${action}`).then((r) => r.data),
 

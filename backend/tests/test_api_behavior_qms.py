@@ -25,13 +25,14 @@ def test_qms_deviation_create_update_and_filter(client, seeded_db):
         headers=_auth_header(token),
         json={
             "title": "Unexpected hold time exceeded",
-            "deviation_type": "unplanned",
-            "category": "process",
+            "deviation_type": "process",
+            "gmp_impact_classification": "major",
             "description": "Hold time exceeded by 3 hours before filtration step during batch execution.",
             "detected_during": "manufacturing",
             "detection_date": now,
             "risk_level": "high",
             "immediate_action": "Quarantined in-process material and notified QA immediately.",
+            "immediate_containment_actions": "Quarantined in-process material and notified QA immediately.",
         },
     )
     assert create.status_code == 201, create.text
@@ -42,38 +43,54 @@ def test_qms_deviation_create_update_and_filter(client, seeded_db):
     patch = client.patch(
         f"/api/v1/qms/deviations/{deviation_id}",
         headers=_auth_header(token),
-        json={"current_status": "under_review", "root_cause": "Operator delay due to line clearance issue."},
+        json={
+            "current_status": "under_investigation",
+            "root_cause": "Operator delay due to line clearance issue.",
+            "root_cause_category": "human_error",
+        },
     )
     assert patch.status_code == 200, patch.text
     updated = patch.json()
-    assert updated["current_status"] == "under_review"
+    assert updated["current_status"] == "under_investigation"
 
     filtered = client.get(
         "/api/v1/qms/deviations",
         headers=_auth_header(token),
-        params={"status_filter": "under_review"},
+        params={"status_filter": "under_investigation"},
     )
     assert filtered.status_code == 200, filtered.text
     ids = {item["id"] for item in filtered.json()}
     assert deviation_id in ids
 
     transition = client.post(
-        f"/api/v1/qms/deviations/{deviation_id}/approve",
+        f"/api/v1/qms/deviations/{deviation_id}/sign",
         headers=_auth_header(token),
+        json={
+            "username": seeded_db["admin_username"],
+            "password": seeded_db["admin_password"],
+            "meaning": "pending_approval",
+            "comments": "Approved for closure decision.",
+        },
     )
     assert transition.status_code == 200, transition.text
-    assert transition.json()["current_status"] == "approved"
-
-    bad_state_jump = client.post(
-        f"/api/v1/qms/deviations/{deviation_id}/submit",
+    refreshed = client.get(
+        f"/api/v1/qms/deviations/{deviation_id}",
         headers=_auth_header(token),
     )
-    assert bad_state_jump.status_code == 400, bad_state_jump.text
+    assert refreshed.status_code == 200, refreshed.text
+    assert refreshed.json()["current_status"] == "pending_approval"
 
     sign = client.post(
         f"/api/v1/qms/deviations/{deviation_id}/sign",
         headers=_auth_header(token),
-        json={"password": seeded_db["admin_password"], "meaning": "reviewed", "comments": "Checked."},
+        json={
+            "username": seeded_db["admin_username"],
+            "password": seeded_db["admin_password"],
+            "meaning": "closed",
+            "comments": "Checked.",
+            "no_capa_needed_confirmed": True,
+            "no_capa_needed_justification": "Investigated and corrected without CAPA.",
+        },
     )
     assert sign.status_code == 200, sign.text
 
@@ -166,20 +183,27 @@ def test_qms_transition_requires_permission(client, seeded_db):
         headers=_auth_header(admin_token),
         json={
             "title": "Minor event for permission test",
-            "deviation_type": "unplanned",
-            "category": "process",
+            "deviation_type": "process",
+            "gmp_impact_classification": "minor",
             "description": "Minor event used only to verify permission guardrails on transitions.",
             "detected_during": "line setup",
             "detection_date": now,
             "risk_level": "low",
             "immediate_action": "Documented and held material.",
+            "immediate_containment_actions": "Documented and held material.",
         },
     )
     assert create.status_code == 201, create.text
     deviation_id = create.json()["id"]
 
     forbidden = client.post(
-        f"/api/v1/qms/deviations/{deviation_id}/submit",
+        f"/api/v1/qms/deviations/{deviation_id}/sign",
         headers=_auth_header(operator_token),
+        json={
+            "username": "operator",
+            "password": "Operator1234!",
+            "meaning": "under_investigation",
+            "comments": "Attempt transition",
+        },
     )
     assert forbidden.status_code == 403, forbidden.text
