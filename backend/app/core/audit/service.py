@@ -24,6 +24,7 @@ class AuditService:
         user_id: Optional[str] = None,
         username: str = "system",
         full_name: str = "System",
+        role_at_time: Optional[str] = None,
         ip_address: Optional[str] = None,
         session_id: Optional[str] = None,
         site_id: Optional[str] = None,
@@ -44,6 +45,7 @@ class AuditService:
             user_id=user_id,
             username=username,
             full_name=full_name,
+            role_at_time=role_at_time,
             ip_address=ip_address,
             session_id=session_id,
             action=action,
@@ -105,6 +107,7 @@ class AuditService:
         db: AsyncSession, *, record_type: str, record_id: str, module: str,
         field_name: str, old_value: Any, new_value: Any,
         user_id: str, username: str, full_name: str,
+        role_at_time: Optional[str] = None,
         ip_address: Optional[str] = None, reason: Optional[str] = None,
     ) -> AuditEvent:
         """Log a single field value change with before/after."""
@@ -116,6 +119,7 @@ class AuditService:
             db, action="UPDATE", record_type=record_type, record_id=record_id,
             module=module, human_description=description,
             user_id=user_id, username=username, full_name=full_name,
+            role_at_time=role_at_time,
             ip_address=ip_address, field_name=field_name,
             old_value=old_value, new_value=new_value, reason=reason,
         )
@@ -124,6 +128,7 @@ class AuditService:
     async def log_signature(
         db: AsyncSession, *, record_type: str, record_id: str, module: str,
         meaning: str, user_id: str, username: str, full_name: str,
+        role_at_time: Optional[str] = None,
         ip_address: Optional[str] = None,
     ) -> AuditEvent:
         description = f"Electronic signature '{meaning}' applied to {record_type} {record_id} by {full_name}"
@@ -131,5 +136,6 @@ class AuditService:
             db, action="SIGN", record_type=record_type, record_id=record_id,
             module=module, human_description=description,
             user_id=user_id, username=username, full_name=full_name,
+            role_at_time=role_at_time,
             ip_address=ip_address,
         )

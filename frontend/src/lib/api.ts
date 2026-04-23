@@ -1,6 +1,8 @@
 import axios from "axios";
 import { useAuthStore } from "@/stores/authStore";
 
+// Production: set VITE_API_BASE_URL to your deployed API origin (e.g. https://api-xx.up.railway.app)
+// with no trailing slash. Vite inlines this at build time from .env.production.
 const baseRoot = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
 const baseURL = `${baseRoot}/api/v1`;
 
@@ -106,6 +108,10 @@ export const qmsApi = {
     api.post(`/qms/capas/${id}/sign`, data).then((r) => r.data),
   addCapaAction: (id: string, data: unknown) =>
     api.post(`/qms/capas/${id}/actions`, data).then((r) => r.data),
+  updateCapaAction: (capaId: string, actionId: string, data: unknown) =>
+    api.patch(`/qms/capas/${capaId}/actions/${actionId}`, data).then((r) => r.data),
+  listCapaAuditTrail: (id: string) =>
+    api.get(`/qms/capas/${id}/audit-trail`).then((r) => r.data),
 
   // Deviations
   listDeviations: (params?: Record<string, string | number>) =>

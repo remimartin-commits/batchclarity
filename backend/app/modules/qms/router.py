@@ -10,7 +10,7 @@ from app.core.auth.models import User
 from app.modules.qms import services as qms_services
 from app.modules.qms.schemas import (
     CAPACreate, CAPAOut, CAPAUpdate, CAPASignRequest,
-    CAPAActionCreate,
+    CAPAActionCreate, CAPAActionOut, CAPAActionUpdate, CAPAAuditEventOut,
     DeviationCreate, DeviationOut, DeviationUpdate,
     ChangeControlCreate, ChangeControlOut, ChangeControlUpdate,
 )
@@ -90,6 +90,29 @@ async def add_capa_action(
     return await qms_services.add_capa_action(
         db, capa_id, body, current_user, get_client_ip(request)
     )
+
+
+@router.patch("/capas/{capa_id}/actions/{action_id}", response_model=CAPAActionOut)
+async def update_capa_action(
+    capa_id: str,
+    action_id: str,
+    body: CAPAActionUpdate,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await qms_services.update_capa_action(
+        db, capa_id, action_id, body.model_dump(exclude_none=True), current_user, get_client_ip(request)
+    )
+
+
+@router.get("/capas/{capa_id}/audit-trail", response_model=list[CAPAAuditEventOut])
+async def list_capa_audit_trail(
+    capa_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await qms_services.list_capa_audit_events(db, capa_id)
 
 
 # ── Deviations ──────────────────────────────────────────────────────────────

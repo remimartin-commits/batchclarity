@@ -7,6 +7,7 @@ interface ESignatureModalProps {
   description?: string;
   onClose: () => void;
   onConfirm: (payload: {
+    username: string;
     password: string;
     meaning: string;
     comments: string;
@@ -34,8 +35,8 @@ export default function ESignatureModal({
       meaning={meaning}
       availableMeanings={availableMeanings}
       onClose={onClose}
-      onConfirm={async (password, selectedMeaning, comments) =>
-        onConfirm({ password, meaning: selectedMeaning, comments })
+      onConfirm={async (username, password, selectedMeaning, comments) =>
+        onConfirm({ username, password, meaning: selectedMeaning, comments })
       }
     />
   );

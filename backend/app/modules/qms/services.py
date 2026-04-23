@@ -30,7 +30,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.audit.service import AuditService
+from app.core.audit.models import AuditEvent
 from app.core.auth.models import User
+from app.core.auth.models import Role, user_roles
 from app.core.auth.service import AuthService
 from app.core.esig.service import ESignatureService
 from app.modules.qms.models import CAPA, CAPAAction, ChangeControl, Deviation
@@ -55,6 +57,26 @@ def _utcnow() -> datetime:
 def _next_number(prefix: str, sequence: int) -> str:
     year = _utcnow().year
     return f"{prefix}-{year}-{sequence:04d}"
+
+
+CAPA_TRANSITIONS: dict[str, tuple[str, str]] = {
+    "investigation": ("open", "investigation"),
+    "action_plan_approved": ("investigation", "action_plan_approved"),
+    "in_progress": ("action_plan_approved", "in_progress"),
+    "effectiveness_check": ("in_progress", "effectiveness_check"),
+    "closed": ("effectiveness_check", "closed"),
+}
+
+
+async def _role_at_time(db: AsyncSession, user_id: str) -> str:
+    result = await db.execute(
+        select(Role.name)
+        .join(user_roles, Role.id == user_roles.c.role_id)
+        .where(user_roles.c.user_id == user_id)
+        .order_by(Role.name.asc())
+    )
+    names = [row[0] for row in result.all()]
+    return ", ".join(names) if names else "Unassigned"
 
 
 async def _require_permission(db: AsyncSession, user: User, permission_code: str) -> None:
@@ -119,11 +141,19 @@ async def create_capa(
     """
     count_result = await db.execute(select(func.count()).select_from(CAPA))
     count = (count_result.scalar() or 0) + 1
+    role_at_time = await _role_at_time(db, str(user.id))
+
+    if data.regulatory_reportable and not (data.regulatory_reporting_justification or "").strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Regulatory reporting justification is required when regulatory reporting is required.",
+        )
 
     capa = CAPA(
         capa_number=_next_number("CAPA", count),
         owner_id=str(user.id),
         site_id=str(user.site_id) if getattr(user, "site_id", None) else "default",
+        current_status="open",
         **data.model_dump(exclude={"actions"}),
     )
     db.add(capa)
@@ -146,6 +176,7 @@ async def create_capa(
         user_id=str(user.id),
         username=user.username,
         full_name=user.full_name,
+        role_at_time=role_at_time,
         ip_address=ip_address,
         record_snapshot_after={
             "capa_number": capa.capa_number,
@@ -156,8 +187,11 @@ async def create_capa(
     )
 
     await db.commit()
-    await db.refresh(capa)
-    return capa
+    # Re-fetch with relationship loaded — db.refresh() does not load async relationships
+    result = await db.execute(
+        select(CAPA).where(CAPA.id == capa.id).options(selectinload(CAPA.actions))
+    )
+    return result.scalar_one()
 
 
 async def list_capas(
@@ -204,6 +238,17 @@ async def update_capa(
     """
     capa = await get_capa_or_404(db, capa_id)
     changes = data.model_dump(exclude_none=True)
+    role_at_time = await _role_at_time(db, str(user.id))
+
+    next_regulatory = changes.get("regulatory_reportable", capa.regulatory_reportable)
+    next_justification = changes.get(
+        "regulatory_reporting_justification", capa.regulatory_reporting_justification
+    )
+    if next_regulatory and not (next_justification or "").strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Regulatory reporting justification is required when regulatory reporting is required.",
+        )
 
     for field, new_val in changes.items():
         old_val = getattr(capa, field)
@@ -219,12 +264,16 @@ async def update_capa(
             user_id=str(user.id),
             username=user.username,
             full_name=user.full_name,
+            role_at_time=role_at_time,
             ip_address=ip_address,
         )
 
     await db.commit()
-    await db.refresh(capa)
-    return capa
+    # Re-fetch with relationship loaded — db.refresh() does not load async relationships
+    result = await db.execute(
+        select(CAPA).where(CAPA.id == capa.id).options(selectinload(CAPA.actions))
+    )
+    return result.scalar_one()
 
 
 async def add_capa_action(
@@ -236,6 +285,9 @@ async def add_capa_action(
 ) -> CAPAAction:
     """Add a new action to an existing CAPA, auto-assigning the next sequence number."""
     capa = await get_capa_or_404(db, capa_id)
+    role_at_time = await _role_at_time(db, str(user.id))
+    if not data.username:
+        raise HTTPException(status_code=400, detail="Username is required for CAPA transition signatures.")
 
     count_result = await db.execute(
         select(func.count()).select_from(CAPAAction).where(CAPAAction.capa_id == capa_id)
@@ -259,12 +311,97 @@ async def add_capa_action(
         user_id=str(user.id),
         username=user.username,
         full_name=user.full_name,
+        role_at_time=role_at_time,
         ip_address=ip_address,
     )
 
     await db.commit()
     await db.refresh(action)
     return action
+
+
+async def update_capa_action(
+    db: AsyncSession,
+    capa_id: str,
+    action_id: str,
+    payload: dict,
+    user: User,
+    ip_address: Optional[str],
+) -> CAPAAction:
+    capa = await get_capa_or_404(db, capa_id)
+    role_at_time = await _role_at_time(db, str(user.id))
+    result = await db.execute(
+        select(CAPAAction).where(
+            CAPAAction.id == action_id,
+            CAPAAction.capa_id == capa_id,
+        )
+    )
+    action = result.scalar_one_or_none()
+    if not action:
+        raise HTTPException(status_code=404, detail="CAPA action not found.")
+
+    allowed_fields = {"description", "assignee_id", "due_date", "status", "completion_evidence"}
+    for field, value in payload.items():
+        if field not in allowed_fields:
+            continue
+        old_val = getattr(action, field)
+        setattr(action, field, value)
+        await AuditService.log_field_change(
+            db,
+            record_type="capa_action",
+            record_id=action_id,
+            module="qms",
+            field_name=field,
+            old_value=old_val,
+            new_value=value,
+            user_id=str(user.id),
+            username=user.username,
+            full_name=user.full_name,
+            role_at_time=role_at_time,
+            ip_address=ip_address,
+        )
+
+    await AuditService.log(
+        db,
+        action="UPDATE",
+        record_type="capa_action",
+        record_id=action_id,
+        module="qms",
+        human_description=f"CAPA action updated for {capa.capa_number}",
+        user_id=str(user.id),
+        username=user.username,
+        full_name=user.full_name,
+        role_at_time=role_at_time,
+        ip_address=ip_address,
+    )
+    await db.commit()
+    await db.refresh(action)
+    return action
+
+
+async def list_capa_audit_events(db: AsyncSession, capa_id: str) -> list[dict]:
+    await get_capa_or_404(db, capa_id)
+    result = await db.execute(
+        select(AuditEvent)
+        .where(
+            AuditEvent.record_id == capa_id,
+            AuditEvent.record_type == "capa",
+        )
+        .order_by(AuditEvent.event_at.desc())
+    )
+    events = result.scalars().all()
+    return [
+        {
+            "user_full_name": evt.full_name,
+            "role_at_time": evt.role_at_time or "Unassigned",
+            "action": evt.action,
+            "old_value": evt.old_value,
+            "new_value": evt.new_value,
+            "timestamp_utc": evt.event_at,
+            "ip_address": evt.ip_address,
+        }
+        for evt in events
+    ]
 
 
 async def sign_capa(
@@ -277,17 +414,55 @@ async def sign_capa(
     """
     Apply an electronic signature to a CAPA (21 CFR Part 11 §11.50).
 
-    Password re-authentication is mandatory — ESignatureService enforces this.
-    Meaning drives the status transition:
-      reviewed  -> under_review
-      approved  -> approved
-      closed    -> closed (sets actual_completion_date)
+    Password re-authentication is mandatory and includes explicit username entry.
+    Meaning drives strict TrackWise transitions:
+      open -> investigation -> action_plan_approved -> in_progress -> effectiveness_check -> closed
     """
     capa = await get_capa_or_404(db, capa_id)
+    role_at_time = await _role_at_time(db, str(user.id))
+
+    if data.meaning not in CAPA_TRANSITIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported CAPA transition meaning '{data.meaning}'.",
+        )
+
+    required_from, next_status = CAPA_TRANSITIONS[data.meaning]
+    if capa.current_status != required_from:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Transition '{data.meaning}' requires CAPA in '{required_from}', "
+                f"but CAPA is in '{capa.current_status}'."
+            ),
+        )
+
+    if data.meaning == "in_progress" and not (capa.root_cause or "").strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Root cause description is mandatory before moving CAPA to IN_PROGRESS.",
+        )
+
+    if data.meaning == "effectiveness_check":
+        result = await db.execute(
+            select(func.count())
+            .select_from(CAPAAction)
+            .where(
+                CAPAAction.capa_id == capa_id,
+                CAPAAction.status != "complete",
+            )
+        )
+        incomplete_count = int(result.scalar() or 0)
+        if incomplete_count > 0:
+            raise HTTPException(
+                status_code=400,
+                detail="All CAPA actions must be COMPLETE before moving to EFFECTIVENESS_CHECK.",
+            )
 
     sig = await ESignatureService.sign(
         db,
         user_id=str(user.id),
+        username=data.username,
         password=data.password,
         record_type="capa",
         record_id=capa_id,
@@ -302,18 +477,32 @@ async def sign_capa(
         ip_address=ip_address,
         comments=data.comments,
     )
-
-    _meaning_to_status = {
-        "reviewed": "under_review",
-        "approved": "approved",
-        "closed":   "closed",
-    }
-    if data.meaning in _meaning_to_status:
-        capa.current_status = _meaning_to_status[data.meaning]
+    old_status = capa.current_status
+    capa.current_status = next_status
 
     # 21 CFR Part 11: capture actual completion timestamp at close — immutable thereafter
     if data.meaning == "closed" and capa.actual_completion_date is None:
         capa.actual_completion_date = _utcnow()
+
+    await AuditService.log(
+        db,
+        action="TRANSITION",
+        record_type="capa",
+        record_id=capa_id,
+        module="qms",
+        human_description=(
+            f"CAPA {capa.capa_number} transitioned {old_status} -> {next_status} "
+            f"via e-signature meaning '{data.meaning}'"
+        ),
+        user_id=str(user.id),
+        username=user.username,
+        full_name=user.full_name,
+        role_at_time=role_at_time,
+        ip_address=ip_address,
+        old_value={"current_status": old_status},
+        new_value={"current_status": next_status},
+        reason=data.comments,
+    )
 
     await db.commit()
     return {

@@ -17,28 +17,35 @@ class CAPA(Base):
     # Identification
     capa_number: Mapped[str] = mapped_column(String(50), unique=True, nullable=False, index=True)
     title: Mapped[str] = mapped_column(String(500), nullable=False)
-    capa_type: Mapped[str] = mapped_column(String(50), nullable=False)  # corrective | preventive
+    capa_type: Mapped[str] = mapped_column(String(50), nullable=False)  # corrective | preventive | corrective_and_preventive
 
     # Classification
     source: Mapped[str] = mapped_column(String(100), nullable=False)
-    # Sources: deviation, audit_finding, customer_complaint, oos_result, trend_analysis, self_inspection, other
+    # Sources: deviation, audit_finding, customer_complaint, oos, self_inspection, risk_assessment, other
+    product_material_affected: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    batch_lot_number: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    gmp_classification: Mapped[str] = mapped_column(String(50), nullable=False, default="minor")
     source_record_id: Mapped[str | None] = mapped_column(String(36), nullable=True)  # Link to source record
     risk_level: Mapped[str] = mapped_column(String(20), nullable=False, default="medium")  # low|medium|high|critical
     product_impact: Mapped[bool] = mapped_column(Boolean, default=False)
     patient_safety_impact: Mapped[bool] = mapped_column(Boolean, default=False)
     regulatory_reportable: Mapped[bool] = mapped_column(Boolean, default=False)
+    regulatory_reporting_justification: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Description
     problem_description: Mapped[str] = mapped_column(Text, nullable=False)
     immediate_actions: Mapped[str | None] = mapped_column(Text, nullable=True)
     root_cause: Mapped[str | None] = mapped_column(Text, nullable=True)
+    root_cause_category: Mapped[str | None] = mapped_column(String(100), nullable=True)
     root_cause_method: Mapped[str | None] = mapped_column(String(100), nullable=True)  # 5-why, fishbone, etc.
 
     # Effectiveness
     effectiveness_criteria: Mapped[str | None] = mapped_column(Text, nullable=True)
     effectiveness_check_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    effectiveness_check_method: Mapped[str | None] = mapped_column(String(200), nullable=True)
     effectiveness_result: Mapped[str | None] = mapped_column(String(50), nullable=True)  # effective|not_effective
     effectiveness_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    effectiveness_evidence_note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Ownership
     site_id: Mapped[str] = mapped_column(String(36), ForeignKey("sites.id"), nullable=False)
@@ -52,7 +59,7 @@ class CAPA(Base):
 
     # Workflow (managed by workflow engine)
     workflow_instance_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("workflow_instances.id"), nullable=True)
-    current_status: Mapped[str] = mapped_column(String(50), nullable=False, default="draft")
+    current_status: Mapped[str] = mapped_column(String(50), nullable=False, default="open")
 
     actions: Mapped[list["CAPAAction"]] = relationship("CAPAAction", back_populates="capa")
     attachments: Mapped[list["CAPAAttachment"]] = relationship("CAPAAttachment", back_populates="capa")
@@ -68,9 +75,9 @@ class CAPAAction(Base):
     assignee_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False)
     due_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    status: Mapped[str] = mapped_column(String(50), nullable=False, default="open")
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="pending")
     completion_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
-    evidence: Mapped[str | None] = mapped_column(Text, nullable=True)
+    completion_evidence: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_frozen: Mapped[bool] = mapped_column(Boolean, default=False)  # e.g. during system migration
     freeze_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 

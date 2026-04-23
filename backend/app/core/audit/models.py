@@ -33,6 +33,7 @@ class AuditEvent(Base):
     user_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)  # Null for system events
     username: Mapped[str] = mapped_column(String(100), nullable=False)  # Denormalised — preserved forever
     full_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    role_at_time: Mapped[str | None] = mapped_column(String(255), nullable=True)
     ip_address: Mapped[str | None] = mapped_column(String(45), nullable=True)
     session_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
 

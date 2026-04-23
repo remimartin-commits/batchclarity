@@ -35,11 +35,12 @@ def test_e2e_happy_paths_all_modules(client, seeded_db, monkeypatch, session_mak
                 patient_safety_impact=False,
                 regulatory_reportable=False,
                 problem_description="A detailed problem description for e2e CAPA coverage.",
+                root_cause="Validated root cause for transition gating.",
                 department="QA",
                 identified_date=datetime.now(timezone.utc),
                 site_id=me["site_id"],
                 owner_id=me["id"],
-                current_status="draft",
+                current_status="effectiveness_check",
             )
             session.add(capa)
             await session.flush([capa])
@@ -53,7 +54,12 @@ def test_e2e_happy_paths_all_modules(client, seeded_db, monkeypatch, session_mak
     capa_sign = client.post(
         f"/api/v1/qms/capas/{capa_id}/sign",
         headers=_auth(token),
-        json={"password": seeded_db["admin_password"], "meaning": "closed", "comments": "e2e"},
+        json={
+            "username": seeded_db["admin_username"],
+            "password": seeded_db["admin_password"],
+            "meaning": "closed",
+            "comments": "e2e",
+        },
     )
     assert capa_sign.status_code == 200, capa_sign.text
 

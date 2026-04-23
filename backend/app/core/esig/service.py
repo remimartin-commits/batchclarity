@@ -11,7 +11,7 @@ from jose import jwt
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.core.esig.models import ElectronicSignature, SignatureRequirement
-from app.core.auth.models import User
+from app.core.auth.models import User, Role, user_roles
 from app.core.auth.service import AuthService
 from app.core.audit.service import AuditService
 from app.core.config import settings
@@ -47,6 +47,7 @@ class ESignatureService:
         db: AsyncSession,
         *,
         user_id: str,
+        username: str | None = None,
         password: str,          # Re-authentication required per 21 CFR Part 11
         record_type: str,
         record_id: str,
@@ -72,6 +73,15 @@ class ESignatureService:
         if not user:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
 
+        if username is not None and user.username != username:
+            await AuditService.log(
+                db, action="SIGN_FAILED", record_type=record_type, record_id=record_id,
+                module="esig", human_description=f"Failed signature attempt by {user.full_name} — username mismatch",
+                user_id=user.id, username=user.username, full_name=user.full_name, ip_address=ip_address,
+            )
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                                detail="Signature failed: username does not match authenticated user.")
+
         if not AuthService.verify_password(password, user.hashed_password):
             await AuditService.log(
                 db, action="SIGN_FAILED", record_type=record_type, record_id=record_id,
@@ -80,6 +90,14 @@ class ESignatureService:
             )
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
                                 detail="Signature failed: incorrect password.")
+
+        roles_result = await db.execute(
+            select(Role.name)
+            .join(user_roles, Role.id == user_roles.c.role_id)
+            .where(user_roles.c.user_id == user.id)
+            .order_by(Role.name.asc())
+        )
+        role_at_time = ", ".join([r[0] for r in roles_result.all()]) or "Unassigned"
 
         # Step 2 — Hash the record
         record_hash = ESignatureService._hash_record(record_data)
@@ -115,7 +133,7 @@ class ESignatureService:
         await AuditService.log_signature(
             db, record_type=record_type, record_id=record_id, module="esig",
             meaning=meaning, user_id=user.id, username=user.username,
-            full_name=user.full_name, ip_address=ip_address,
+            full_name=user.full_name, role_at_time=role_at_time, ip_address=ip_address,
         )
 
         return sig
