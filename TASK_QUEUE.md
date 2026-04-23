@@ -567,7 +567,10 @@ Second call: if already 2+ sigs, advance to APPROVED
 APPROVED state requires minimum 2 e-signatures. Emergency changes bypass review but
 require QA Director sign-off and a 30-day retrospective review.
 
-- **Status:** PENDING
+- **Status:** DONE — 2026-04-23
+- **Summary:** Change Control backend now enforces regulatory filing deadline when filing is required, emergency
+  direct-approval guard (QA Director-only), and validation-required closure gate needing approved qualification linkage.
+  Added retrospective review due-date capture for emergency approvals and reminder-scheduling audit events for filing windows.
 - **Priority:** P0
 - **Lane:** A + B + C
 - **Depends on:** TASK-036 pattern established
@@ -607,7 +610,10 @@ Output: docs/part11_esig_audit.md with PASS/FAIL/FIXED column per endpoint.
 E-sig requires username + password verified at time of signing. JWT alone is insufficient.
 Every approval/closure/rejection is an e-sig event.
 
-- **Status:** PENDING
+- **Status:** DONE — 2026-04-23
+- **Summary:** Re-validated and retained full Part 11/Annex 11 transition coverage matrix in docs/part11_esig_audit.md.
+  Confirmed JWT + password re-auth + e-sign records + old/new transition audit behavior across QMS, MES, Equipment,
+  LIMS, Training, and Documents modules; full backend test suite passing post-hardening.
 - **Priority:** P0 (regulatory blocker — cannot demo without this)
 - **Lane:** C (GMP logic)
 - **Depends on:** TASK-036, TASK-037, TASK-038
