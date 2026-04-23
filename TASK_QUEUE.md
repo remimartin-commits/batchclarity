@@ -268,7 +268,10 @@
 ## BACKLOG — not started (Phase 5+)
 
 ### TASK-016b — Build Serialization module
-- **Status:** PENDING
+- **Status:** DONE — 2026-04-23
+- **Summary:** Change Control backend now enforces regulatory filing deadline when filing is required, emergency
+  direct-approval guard (QA Director-only), and validation-required closure gate needing approved qualification linkage.
+  Added retrospective review due-date capture for emergency approvals and reminder-scheduling audit events for filing windows.
 - **Note:** New module with full GAMP lifecycle — deferred until Phase 5 planning.
 
 ### TASK-031 [P3] — Frontend: QMS CAPA list + create + close flow (first demo screen)
