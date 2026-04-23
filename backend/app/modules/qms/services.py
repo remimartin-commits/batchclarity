@@ -287,8 +287,6 @@ async def add_capa_action(
     """Add a new action to an existing CAPA, auto-assigning the next sequence number."""
     capa = await get_capa_or_404(db, capa_id)
     role_at_time = await _role_at_time(db, str(user.id))
-    if not data.username:
-        raise HTTPException(status_code=400, detail="Username is required for CAPA transition signatures.")
 
     count_result = await db.execute(
         select(func.count()).select_from(CAPAAction).where(CAPAAction.capa_id == capa_id)
@@ -486,6 +484,12 @@ async def sign_capa(
             detail="Root cause description is mandatory before moving CAPA to IN_PROGRESS.",
         )
 
+    if data.meaning == "investigation" and capa.root_cause_category is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Root cause category is mandatory before moving CAPA to INVESTIGATION.",
+        )
+
     if data.meaning == "effectiveness_check":
         result = await db.execute(
             select(func.count())
@@ -500,6 +504,36 @@ async def sign_capa(
             raise HTTPException(
                 status_code=400,
                 detail="All CAPA actions must be COMPLETE before moving to EFFECTIVENESS_CHECK.",
+            )
+
+    if data.meaning == "closed":
+        if not (capa.root_cause or "").strip():
+            raise HTTPException(
+                status_code=400,
+                detail="Root cause description is mandatory before closing CAPA.",
+            )
+        if capa.effectiveness_check_date is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Effectiveness check date is mandatory before closing CAPA.",
+            )
+        if capa.effectiveness_result != "pass":
+            raise HTTPException(
+                status_code=400,
+                detail="Effectiveness result must be PASS before closing CAPA.",
+            )
+        incomplete_result = await db.execute(
+            select(func.count())
+            .select_from(CAPAAction)
+            .where(
+                CAPAAction.capa_id == capa_id,
+                CAPAAction.status != "complete",
+            )
+        )
+        if int(incomplete_result.scalar() or 0) > 0:
+            raise HTTPException(
+                status_code=400,
+                detail="All CAPA actions must be COMPLETE before closing CAPA.",
             )
 
     sig = await ESignatureService.sign(

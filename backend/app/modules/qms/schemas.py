@@ -31,8 +31,10 @@ class CAPASourceType(str, Enum):
     audit_finding = "audit_finding"
     customer_complaint = "customer_complaint"
     oos = "oos"
+    oot = "oot"
     self_inspection = "self_inspection"
     risk_assessment = "risk_assessment"
+    supplier_issue = "supplier_issue"
     other = "other"
 
 

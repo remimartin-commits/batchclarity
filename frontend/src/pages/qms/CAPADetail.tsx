@@ -3,7 +3,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import { qmsApi, usersApi } from "@/lib/api";
 import ESignatureModal from "@/components/shared/ESignatureModal";
-import { toast } from "@/stores/toastStore";
+import { useToast } from "@/hooks/use-toast";
+import { Button } from "@/components/ui/button";
+import { Card as UiCard, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 const STATUS_STYLES: Record<string, string> = {
   open: "bg-gray-100 text-gray-600",
@@ -30,6 +34,7 @@ const RISK_STYLES: Record<string, string> = {
 };
 
 export default function CAPADetail() {
+  const { toast } = useToast();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -66,11 +71,11 @@ export default function CAPADetail() {
       queryClient.invalidateQueries({ queryKey: ["qms-capa-detail", id] });
       queryClient.invalidateQueries({ queryKey: ["qms-capas"] });
       setIsSignOpen(false);
-      toast.success("CAPA closed and signature recorded.");
+      toast({ title: "Signature recorded", description: "CAPA transition signed and recorded." });
     },
     onError: (error: any) => {
       const detail = error?.response?.data?.detail;
-      toast.error(typeof detail === "string" ? detail : "CAPA signature failed.");
+      toast({ title: "Signature failed", description: typeof detail === "string" ? detail : "CAPA signature failed.", variant: "destructive" });
     },
   });
 
@@ -107,7 +112,7 @@ export default function CAPADetail() {
       </button>
 
       {/* Header card */}
-      <div className="bg-white rounded-xl shadow-sm p-6 flex items-start justify-between gap-4">
+      <UiCard className="p-6 flex items-start justify-between gap-4">
         <div className="space-y-2 min-w-0">
           <p className="font-mono text-brand-700 font-semibold text-sm">{capa.capa_number}</p>
           <h1 className="text-2xl font-bold text-gray-900">{capa.title}</h1>
@@ -121,16 +126,12 @@ export default function CAPADetail() {
             <span className="text-gray-300">•</span>
             <span className="text-gray-500">{capa.department}</span>
             <span className="text-gray-300">•</span>
-            <span
-              className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_STYLES[capa.current_status] ?? "bg-gray-100 text-gray-600"}`}
-            >
+            <Badge className={STATUS_STYLES[capa.current_status] ?? "bg-gray-100 text-gray-600"}>
               {String(capa.current_status).replaceAll("_", " ")}
-            </span>
-            <span
-              className={`px-2 py-0.5 rounded-full text-xs font-medium ${RISK_STYLES[capa.risk_level] ?? ""}`}
-            >
+            </Badge>
+            <Badge className={RISK_STYLES[capa.risk_level] ?? ""}>
               {capa.risk_level} risk
-            </span>
+            </Badge>
           </div>
           <p className="text-xs text-gray-400">
             Created {new Date(capa.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
@@ -140,14 +141,14 @@ export default function CAPADetail() {
           </p>
         </div>
         {!isClosed ? (
-          <button
+          <Button
             onClick={() => setIsSignOpen(true)}
-            className="bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold px-4 py-2 rounded-lg whitespace-nowrap flex-shrink-0"
+            className="whitespace-nowrap flex-shrink-0"
           >
             {transitionMeaning === "closed"
               ? "Close CAPA"
               : `Move to ${transitionMeaning.replaceAll("_", " ")}`}
-          </button>
+          </Button>
         ) : (
           <span className="inline-flex items-center gap-1.5 bg-green-50 text-green-700 text-sm font-medium px-3 py-1.5 rounded-lg border border-green-200 flex-shrink-0">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -156,62 +157,62 @@ export default function CAPADetail() {
             Closed
           </span>
         )}
-      </div>
+      </UiCard>
 
       {/* Meta grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-        <Card title="Owner">{ownerLabel}</Card>
-        <Card title="Source">
+        <FieldCard title="Owner">{ownerLabel}</FieldCard>
+        <FieldCard title="Source">
           {capa.source
             .split("_")
             .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1))
             .join(" ")}
-        </Card>
-        <Card title="Department">{capa.department}</Card>
-        <Card title="GMP Classification">{String(capa.gmp_classification || "—").toUpperCase()}</Card>
-        <Card title="Product/Material Affected">{capa.product_material_affected || "—"}</Card>
-        <Card title="Batch/Lot Number">{capa.batch_lot_number || "—"}</Card>
-        <Card title="Identified Date">
+        </FieldCard>
+        <FieldCard title="Department">{capa.department}</FieldCard>
+        <FieldCard title="GMP Classification">{String(capa.gmp_classification || "—").toUpperCase()}</FieldCard>
+        <FieldCard title="Product/Material Affected">{capa.product_material_affected || "—"}</FieldCard>
+        <FieldCard title="Batch/Lot Number">{capa.batch_lot_number || "—"}</FieldCard>
+        <FieldCard title="Identified Date">
           {new Date(capa.identified_date).toLocaleDateString("en-GB", {
             day: "numeric", month: "short", year: "numeric",
           })}
-        </Card>
-        <Card title="Target Completion Date">
+        </FieldCard>
+        <FieldCard title="Target Completion Date">
           {capa.target_completion_date
             ? new Date(capa.target_completion_date).toLocaleDateString("en-GB", {
                 day: "numeric", month: "short", year: "numeric",
               })
             : "—"}
-        </Card>
-        <Card title="Actual Completion Date">
+        </FieldCard>
+        <FieldCard title="Actual Completion Date">
           {capa.actual_completion_date
             ? new Date(capa.actual_completion_date).toLocaleDateString("en-GB", {
                 day: "numeric", month: "short", year: "numeric",
               })
             : "—"}
-        </Card>
+        </FieldCard>
       </div>
 
       {/* Impact flags */}
-      <div className="bg-white rounded-xl shadow-sm p-5">
-        <h2 className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-3">
-          Impact Assessment
-        </h2>
-        <div className="flex flex-wrap gap-3">
-          <Flag active={capa.product_impact} label="Product Impact" />
-          <Flag active={capa.patient_safety_impact} label="Patient Safety Impact" />
-          <Flag active={capa.regulatory_reportable} label="Regulatory Reportable" />
-        </div>
-      </div>
+      <UiCard>
+        <CardHeader>
+          <CardTitle className="text-xs uppercase tracking-wide text-gray-500 font-semibold">Impact Assessment</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-wrap gap-3">
+          <Badge variant={capa.product_impact ? "destructive" : "secondary"}>Product Impact: {capa.product_impact ? "Yes" : "No"}</Badge>
+          <Badge variant={capa.patient_safety_impact ? "destructive" : "secondary"}>Patient Safety Impact: {capa.patient_safety_impact ? "Yes" : "No"}</Badge>
+          <Badge variant={capa.regulatory_reportable ? "destructive" : "secondary"}>Regulatory Reportable: {capa.regulatory_reportable ? "Yes" : "No"}</Badge>
+        </CardContent>
+      </UiCard>
 
       {/* Description fields */}
-      <Card title="Problem Description">{capa.problem_description}</Card>
+      <FieldCard title="Problem Description">{capa.problem_description}</FieldCard>
 
-      <Card title="Immediate Actions">
+      <FieldCard title="Immediate Actions">
         {capa.immediate_actions?.trim() ? capa.immediate_actions : "—"}
-      </Card>
+      </FieldCard>
 
-      <Card title="Root Cause">
+      <FieldCard title="Root Cause">
         {capa.root_cause?.trim() ? (
           <>
             {capa.root_cause}
@@ -222,46 +223,46 @@ export default function CAPADetail() {
             )}
           </>
         ) : "—"}
-      </Card>
+      </FieldCard>
 
-      <Card title="Root Cause Category">
+      <FieldCard title="Root Cause Category">
         {capa.root_cause_category
           ? String(capa.root_cause_category)
               .split("_")
               .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1))
               .join(" ")
           : "—"}
-      </Card>
+      </FieldCard>
 
-      <Card title="Regulatory Reporting Justification">
+      <FieldCard title="Regulatory Reporting Justification">
         {capa.regulatory_reporting_justification?.trim() ? capa.regulatory_reporting_justification : "—"}
-      </Card>
+      </FieldCard>
 
       {/* Effectiveness */}
       {(capa.effectiveness_criteria || capa.effectiveness_result) && (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-          <Card title="Effectiveness Criteria">
+          <FieldCard title="Effectiveness Criteria">
             {capa.effectiveness_criteria ?? "—"}
-          </Card>
-          <Card title="Effectiveness Result">
+          </FieldCard>
+          <FieldCard title="Effectiveness Result">
             {capa.effectiveness_result ?? "—"}
-          </Card>
-          <Card title="Effectiveness Check Date">
+          </FieldCard>
+          <FieldCard title="Effectiveness Check Date">
             {capa.effectiveness_check_date
               ? new Date(capa.effectiveness_check_date).toLocaleDateString("en-GB")
               : "—"}
-          </Card>
-          <Card title="Effectiveness Method">
+          </FieldCard>
+          <FieldCard title="Effectiveness Method">
             {capa.effectiveness_check_method ?? "—"}
-          </Card>
-          <Card title="Effectiveness Evidence">
+          </FieldCard>
+          <FieldCard title="Effectiveness Evidence">
             {capa.effectiveness_evidence_note ?? "—"}
-          </Card>
+          </FieldCard>
         </div>
       )}
 
       {/* Action Plan */}
-      <Card title={`Action Plan (${capa.actions?.length ?? 0})`}>
+      <FieldCard title={`Action Plan (${capa.actions?.length ?? 0})`}>
         {!capa.actions?.length ? (
           <p className="text-sm text-gray-400 italic">No action items defined yet.</p>
         ) : (
@@ -293,42 +294,42 @@ export default function CAPADetail() {
             ))}
           </div>
         )}
-      </Card>
+      </FieldCard>
 
-      <Card title={`Audit Trail (${auditTrail.length})`}>
+      <FieldCard title={`Audit Trail (${auditTrail.length})`}>
         {!auditTrail.length ? (
           <p className="text-sm text-gray-400 italic">No audit events found.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead className="text-gray-500">
-                <tr>
-                  <th className="text-left py-2">User</th>
-                  <th className="text-left py-2">Role at Time</th>
-                  <th className="text-left py-2">Action</th>
-                  <th className="text-left py-2">Old Value</th>
-                  <th className="text-left py-2">New Value</th>
-                  <th className="text-left py-2">UTC Timestamp</th>
-                  <th className="text-left py-2">IP</th>
-                </tr>
-              </thead>
-              <tbody>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>User</TableHead>
+                  <TableHead>Role at Time</TableHead>
+                  <TableHead>Action</TableHead>
+                  <TableHead>Old Value</TableHead>
+                  <TableHead>New Value</TableHead>
+                  <TableHead>UTC Timestamp</TableHead>
+                  <TableHead>IP</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {auditTrail.map((event: any, idx: number) => (
-                  <tr key={idx} className="border-t border-gray-100">
-                    <td className="py-2">{event.user_full_name || "—"}</td>
-                    <td className="py-2">{event.role_at_time || "—"}</td>
-                    <td className="py-2">{event.action || "—"}</td>
-                    <td className="py-2 break-all">{event.old_value ? JSON.stringify(event.old_value) : "—"}</td>
-                    <td className="py-2 break-all">{event.new_value ? JSON.stringify(event.new_value) : "—"}</td>
-                    <td className="py-2">{event.timestamp_utc ? new Date(event.timestamp_utc).toISOString() : "—"}</td>
-                    <td className="py-2">{event.ip_address || "—"}</td>
-                  </tr>
+                  <TableRow key={idx}>
+                    <TableCell>{event.user_full_name || "—"}</TableCell>
+                    <TableCell>{event.role_at_time || "—"}</TableCell>
+                    <TableCell>{event.action || "—"}</TableCell>
+                    <TableCell className="break-all">{event.old_value ? JSON.stringify(event.old_value) : "—"}</TableCell>
+                    <TableCell className="break-all">{event.new_value ? JSON.stringify(event.new_value) : "—"}</TableCell>
+                    <TableCell>{event.timestamp_utc ? new Date(event.timestamp_utc).toISOString() : "—"}</TableCell>
+                    <TableCell>{event.ip_address || "—"}</TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         )}
-      </Card>
+      </FieldCard>
 
       {/* E-Signature modal */}
       <ESignatureModal
@@ -346,34 +347,15 @@ export default function CAPADetail() {
   );
 }
 
-function Card({ title, children }: { title: string; children: React.ReactNode }) {
+function FieldCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="bg-white rounded-xl shadow-sm p-5">
-      <h2 className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-2">
-        {title}
-      </h2>
-      <div className="text-sm text-gray-800 leading-relaxed">{children}</div>
-    </div>
-  );
-}
-
-function Flag({ active, label }: { active: boolean; label: string }) {
-  return (
-    <div
-      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium ${
-        active
-          ? "bg-red-50 text-red-700 border border-red-200"
-          : "bg-gray-50 text-gray-400 border border-gray-200"
-      }`}
-    >
-      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-        {active ? (
-          <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-        ) : (
-          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-        )}
-      </svg>
-      {label}
-    </div>
+    <UiCard>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-xs uppercase tracking-wide text-gray-500 font-semibold">
+          {title}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="text-sm text-gray-800 leading-relaxed">{children}</CardContent>
+    </UiCard>
   );
 }
