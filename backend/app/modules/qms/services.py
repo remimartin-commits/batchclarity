@@ -98,8 +98,9 @@ _DEVIATION_TRANSITIONS: dict[str, tuple[str, str]] = {
 _CHANGE_CONTROL_TRANSITIONS: dict[str, tuple[str, str]] = {
     "submit":     ("draft", "under_review"),
     "approve":    ("under_review", "approved"),
-    "implement":  ("approved", "implementation"),
-    "close":      ("implementation", "closed"),
+    "implement":  ("approved", "in_implementation"),
+    "review_effectiveness": ("in_implementation", "effectiveness_review"),
+    "close":      ("effectiveness_review", "closed"),
 }
 
 
@@ -682,8 +683,8 @@ async def update_deviation(
             record_id=deviation_id,
             module="qms",
             field_name=field,
-            old_value=old_val,
-            new_value=new_val,
+            old_value=str(old_val),
+            new_value=str(new_val),
             user_id=str(user.id),
             username=user.username,
             full_name=user.full_name,
@@ -878,11 +879,18 @@ async def create_change_control(
     """Create a Change Control record. Generates sequential CC-YYYY-NNNN number."""
     count_result = await db.execute(select(func.count()).select_from(ChangeControl))
     count = (count_result.scalar() or 0) + 1
+    role_at_time = await _role_at_time(db, str(user.id))
+
+    if data.regulatory_filing_required and data.regulatory_filing_type is None:
+        raise HTTPException(status_code=400, detail="Regulatory filing type is required when filing is required.")
+    if data.validation_qualification_required and not (data.validation_scope_description or "").strip():
+        raise HTTPException(status_code=400, detail="Validation scope description is required when validation/qualification is required.")
 
     cc = ChangeControl(
         change_number=_next_number("CC", count),
         owner_id=str(user.id),
         site_id=str(user.site_id) if getattr(user, "site_id", None) else "default",
+        approval_signature_roles=[],
         **data.model_dump(),
     )
     db.add(cc)
@@ -898,6 +906,7 @@ async def create_change_control(
         user_id=str(user.id),
         username=user.username,
         full_name=user.full_name,
+        role_at_time=role_at_time,
         ip_address=ip_address,
         record_snapshot_after={
             "change_number": cc.change_number,
@@ -945,8 +954,23 @@ async def update_change_control(
 ) -> ChangeControl:
     """Partial update with field-level audit trail per changed field."""
     cc = await get_change_control_or_404(db, cc_id)
+    role_at_time = await _role_at_time(db, str(user.id))
+    changes = data.model_dump(exclude_none=True)
 
-    for field, new_val in data.model_dump(exclude_none=True).items():
+    if changes.get("regulatory_filing_required", cc.regulatory_filing_required) and not (
+        changes.get("regulatory_filing_type", cc.regulatory_filing_type)
+    ):
+        raise HTTPException(status_code=400, detail="Regulatory filing type is required when filing is required.")
+
+    if changes.get(
+        "validation_qualification_required", cc.validation_qualification_required
+    ) and not (changes.get("validation_scope_description", cc.validation_scope_description) or "").strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Validation scope description is required when validation/qualification is required.",
+        )
+
+    for field, new_val in changes.items():
         old_val = getattr(cc, field, None)
         setattr(cc, field, new_val)
         await AuditService.log_field_change(
@@ -960,6 +984,7 @@ async def update_change_control(
             user_id=str(user.id),
             username=user.username,
             full_name=user.full_name,
+            role_at_time=role_at_time,
             ip_address=ip_address,
         )
 
@@ -981,10 +1006,14 @@ async def sign_change_control(
     """
     await _require_permission(db, user, "qms.change_controls.sign")
     cc = await get_change_control_or_404(db, cc_id)
+    role_at_time = await _role_at_time(db, str(user.id))
+    if data.username is None:
+        raise HTTPException(status_code=400, detail="Username is required for change control signatures.")
 
     sig = await ESignatureService.sign(
         db,
         user_id=str(user.id),
+        username=data.username,
         password=data.password,
         record_type="change_control",
         record_id=cc_id,
@@ -1000,22 +1029,75 @@ async def sign_change_control(
         comments=data.comments,
     )
 
-    _meaning_to_status = {
-        "approved": "approved",
-        "closed":   "closed",
+    old_status = cc.current_status
+    meaning_to_transition = {
+        "under_review": ("draft", "under_review"),
+        "initiator_approved": ("under_review", "approved_pending"),
+        "qa_approved": ("under_review", "approved_pending"),
+        "in_implementation": ("approved", "in_implementation"),
+        "effectiveness_review": ("in_implementation", "effectiveness_review"),
+        "closed": ("effectiveness_review", "closed"),
     }
-    if data.meaning in _meaning_to_status:
-        cc.current_status = _meaning_to_status[data.meaning]
+    if data.meaning not in meaning_to_transition:
+        raise HTTPException(status_code=400, detail=f"Unsupported meaning '{data.meaning}' for change control.")
 
-    # Record actual implementation timestamp at close
-    if data.meaning == "closed" and cc.actual_implementation_date is None:
+    required_from, target = meaning_to_transition[data.meaning]
+    if cc.current_status != required_from and not (
+        data.meaning in {"initiator_approved", "qa_approved"} and cc.current_status == "under_review"
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Meaning '{data.meaning}' requires status '{required_from}', but current is '{cc.current_status}'.",
+        )
+
+    if data.meaning in {"initiator_approved", "qa_approved"}:
+        roles = set((cc.approval_signature_roles or []))
+        roles.add("initiator" if data.meaning == "initiator_approved" else "qa")
+        cc.approval_signature_roles = sorted(list(roles))
+        if {"initiator", "qa"}.issubset(roles):
+            cc.current_status = "approved"
+        else:
+            cc.current_status = "under_review"
+    else:
+        cc.current_status = target
+
+    if cc.current_status == "in_implementation" and cc.actual_implementation_date is None:
         cc.actual_implementation_date = _utcnow()
+
+    if data.meaning == "closed":
+        if not cc.post_change_effectiveness_date or not (cc.post_change_effectiveness_outcome or "").strip():
+            raise HTTPException(
+                status_code=400,
+                detail="Post-change effectiveness review date and outcome are required before close.",
+            )
+
+    await AuditService.log(
+        db,
+        action="TRANSITION",
+        record_type="change_control",
+        record_id=cc_id,
+        module="qms",
+        human_description=(
+            f"Change Control {cc.change_number} transitioned {old_status} -> {cc.current_status} "
+            f"via signature meaning '{data.meaning}'"
+        ),
+        user_id=str(user.id),
+        username=user.username,
+        full_name=user.full_name,
+        role_at_time=role_at_time,
+        ip_address=ip_address,
+        old_value={"current_status": old_status},
+        new_value={"current_status": cc.current_status, "approval_signature_roles": cc.approval_signature_roles},
+        reason=data.comments,
+    )
 
     await db.commit()
     return {
         "signature_id": str(sig.id),
         "signed_at": sig.signed_at,
         "meaning": sig.meaning,
+        "status": cc.current_status,
+        "approval_signature_roles": cc.approval_signature_roles or [],
     }
 
 
@@ -1033,46 +1115,35 @@ async def transition_change_control(
     Each transition requires qms.change_controls.<action> permission.
     'implement' action sets actual_implementation_date.
     """
-    if action not in _CHANGE_CONTROL_TRANSITIONS:
-        raise HTTPException(status_code=404, detail=f"Unknown transition action: '{action}'.")
-
-    permission_code = f"qms.change_controls.{action}"
-    await _require_permission(db, user, permission_code)
-
-    cc = await get_change_control_or_404(db, cc_id)
-    old_state = cc.current_status
-    if action == "submit" and old_state == "approved":
-        # Allow re-submission after direct status edits used by existing tests/UI.
-        next_state = "under_review"
-        cc.current_status = next_state
-    else:
-        cc.current_status = _apply_transition(old_state, action, _CHANGE_CONTROL_TRANSITIONS)
-        _, next_state = _CHANGE_CONTROL_TRANSITIONS[action]
-
-    # Stamp actual_implementation_date when entering implementation state
-    if action == "implement" and cc.actual_implementation_date is None:
-        cc.actual_implementation_date = _utcnow()
-
-    await AuditService.log(
-        db,
-        action="TRANSITION",
-        record_type="change_control",
-        record_id=cc_id,
-        module="qms",
-        human_description=(
-            f"Change Control {cc.change_number} transitioned "
-            f"{old_state} -> {next_state} via '{action}'"
-        ),
-        user_id=str(user.id),
-        username=user.username,
-        full_name=user.full_name,
-        ip_address=ip_address,
-        reason=f"action={action}",
+    raise HTTPException(
+        status_code=400,
+        detail="Deprecated endpoint. Use /change-controls/{id}/sign with username+password for transitions.",
     )
 
-    await db.commit()
-    await db.refresh(cc)
-    return cc
+
+async def list_change_control_audit_events(db: AsyncSession, cc_id: str) -> list[dict]:
+    await get_change_control_or_404(db, cc_id)
+    result = await db.execute(
+        select(AuditEvent)
+        .where(
+            AuditEvent.record_id == cc_id,
+            AuditEvent.record_type == "change_control",
+        )
+        .order_by(AuditEvent.event_at.desc())
+    )
+    events = result.scalars().all()
+    return [
+        {
+            "user_full_name": evt.full_name,
+            "role_at_time": evt.role_at_time or "Unassigned",
+            "action": evt.action,
+            "old_value": evt.old_value,
+            "new_value": evt.new_value,
+            "timestamp_utc": evt.event_at,
+            "ip_address": evt.ip_address,
+        }
+        for evt in events
+    ]
 
 
 # ── Cross-module hooks (called by other modules, never imported from them) ────

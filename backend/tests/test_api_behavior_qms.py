@@ -105,6 +105,7 @@ def test_qms_deviation_create_update_and_filter(client, seeded_db):
 def test_qms_change_control_create_update_and_filter(client, seeded_db):
     token = _login(client, seeded_db["admin_username"], seeded_db["admin_password"])
     tomorrow = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
+    day_after = (datetime.now(timezone.utc) + timedelta(days=2)).isoformat()
 
     create = client.post(
         "/api/v1/qms/change-controls",
@@ -116,7 +117,17 @@ def test_qms_change_control_create_update_and_filter(client, seeded_db):
             "description": "Adjust validated limit to align with new product residue risk assessment.",
             "justification": "Risk review indicates lower threshold needed for patient safety margin.",
             "regulatory_impact": True,
+            "regulatory_filing_required": True,
+            "regulatory_filing_type": "pas",
             "validation_required": True,
+            "validation_qualification_required": True,
+            "validation_scope_description": "IQ/OQ for updated cleaning process limits.",
+            "affected_document_ids": [],
+            "affected_equipment_ids": [],
+            "affected_sop_document_ids": [],
+            "implementation_plan": "Perform phased rollout and qualification on line 1.",
+            "implementation_target_date": tomorrow,
+            "pre_change_verification_checklist": [{"item": "Training complete", "result": "yes"}],
             "proposed_implementation_date": tomorrow,
         },
     )
@@ -128,49 +139,99 @@ def test_qms_change_control_create_update_and_filter(client, seeded_db):
     patch = client.patch(
         f"/api/v1/qms/change-controls/{cc_id}",
         headers=_auth_header(token),
-        json={
-            "current_status": "approved",
-            "actual_implementation_date": tomorrow,
-        },
+        json={"post_change_effectiveness_date": day_after, "post_change_effectiveness_outcome": "Change effective"},
     )
     assert patch.status_code == 200, patch.text
-    updated = patch.json()
-    assert updated["current_status"] == "approved"
 
     filtered = client.get(
         "/api/v1/qms/change-controls",
         headers=_auth_header(token),
-        params={"status_filter": "approved"},
+        params={"status_filter": "draft"},
     )
     assert filtered.status_code == 200, filtered.text
     ids = {item["id"] for item in filtered.json()}
     assert cc_id in ids
 
-    submit = client.post(f"/api/v1/qms/change-controls/{cc_id}/submit", headers=_auth_header(token))
-    assert submit.status_code == 200, submit.text
-    assert submit.json()["current_status"] == "under_review"
-
-    approve = client.post(f"/api/v1/qms/change-controls/{cc_id}/approve", headers=_auth_header(token))
-    assert approve.status_code == 200, approve.text
-    assert approve.json()["current_status"] == "approved"
-
-    implement = client.post(
-        f"/api/v1/qms/change-controls/{cc_id}/implement",
-        headers=_auth_header(token),
-    )
-    assert implement.status_code == 200, implement.text
-    assert implement.json()["current_status"] == "implementation"
-
-    close = client.post(f"/api/v1/qms/change-controls/{cc_id}/close", headers=_auth_header(token))
-    assert close.status_code == 200, close.text
-    assert close.json()["current_status"] == "closed"
-
-    sign = client.post(
+    submit = client.post(
         f"/api/v1/qms/change-controls/{cc_id}/sign",
         headers=_auth_header(token),
-        json={"password": seeded_db["admin_password"], "meaning": "approved", "comments": "Approved."},
+        json={
+            "username": seeded_db["admin_username"],
+            "password": seeded_db["admin_password"],
+            "meaning": "under_review",
+            "comments": "Submitted for review.",
+        },
     )
-    assert sign.status_code == 200, sign.text
+    assert submit.status_code == 200, submit.text
+    current = client.get(f"/api/v1/qms/change-controls/{cc_id}", headers=_auth_header(token))
+    assert current.status_code == 200, current.text
+    assert current.json()["current_status"] == "under_review"
+
+    initiator_approval = client.post(
+        f"/api/v1/qms/change-controls/{cc_id}/sign",
+        headers=_auth_header(token),
+        json={
+            "username": seeded_db["admin_username"],
+            "password": seeded_db["admin_password"],
+            "meaning": "initiator_approved",
+            "comments": "Initiator approval.",
+        },
+    )
+    assert initiator_approval.status_code == 200, initiator_approval.text
+    current = client.get(f"/api/v1/qms/change-controls/{cc_id}", headers=_auth_header(token))
+    assert current.status_code == 200, current.text
+    assert current.json()["current_status"] == "under_review"
+
+    qa_approval = client.post(
+        f"/api/v1/qms/change-controls/{cc_id}/sign",
+        headers=_auth_header(token),
+        json={
+            "username": seeded_db["admin_username"],
+            "password": seeded_db["admin_password"],
+            "meaning": "qa_approved",
+            "comments": "QA approval.",
+        },
+    )
+    assert qa_approval.status_code == 200, qa_approval.text
+    current = client.get(f"/api/v1/qms/change-controls/{cc_id}", headers=_auth_header(token))
+    assert current.status_code == 200, current.text
+    assert current.json()["current_status"] == "approved"
+
+    implement = client.post(
+        f"/api/v1/qms/change-controls/{cc_id}/sign",
+        headers=_auth_header(token),
+        json={
+            "username": seeded_db["admin_username"],
+            "password": seeded_db["admin_password"],
+            "meaning": "in_implementation",
+            "comments": "Implementation started.",
+        },
+    )
+    assert implement.status_code == 200, implement.text
+
+    effectiveness = client.post(
+        f"/api/v1/qms/change-controls/{cc_id}/sign",
+        headers=_auth_header(token),
+        json={
+            "username": seeded_db["admin_username"],
+            "password": seeded_db["admin_password"],
+            "meaning": "effectiveness_review",
+            "comments": "Reviewing effectiveness.",
+        },
+    )
+    assert effectiveness.status_code == 200, effectiveness.text
+
+    close = client.post(
+        f"/api/v1/qms/change-controls/{cc_id}/sign",
+        headers=_auth_header(token),
+        json={
+            "username": seeded_db["admin_username"],
+            "password": seeded_db["admin_password"],
+            "meaning": "closed",
+            "comments": "Closed after effectiveness review.",
+        },
+    )
+    assert close.status_code == 200, close.text
 
 
 def test_qms_transition_requires_permission(client, seeded_db):

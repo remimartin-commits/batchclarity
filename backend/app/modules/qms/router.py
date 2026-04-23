@@ -12,7 +12,7 @@ from app.modules.qms.schemas import (
     CAPACreate, CAPAOut, CAPAUpdate, CAPASignRequest,
     CAPAActionCreate, CAPAActionOut, CAPAActionUpdate, CAPAAuditEventOut,
     DeviationCreate, DeviationOut, DeviationUpdate, DeviationAuditEventOut,
-    ChangeControlCreate, ChangeControlOut, ChangeControlUpdate,
+    ChangeControlCreate, ChangeControlOut, ChangeControlUpdate, ChangeControlAuditEventOut,
 )
 
 router = APIRouter(prefix="/qms", tags=["QMS"])
@@ -272,3 +272,12 @@ async def transition_change_control(
     return await qms_services.transition_change_control(
         db, cc_id, action, current_user, get_client_ip(request)
     )
+
+
+@router.get("/change-controls/{cc_id}/audit-trail", response_model=list[ChangeControlAuditEventOut])
+async def list_change_control_audit_trail(
+    cc_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await qms_services.list_change_control_audit_events(db, cc_id)

@@ -143,14 +143,28 @@ class ChangeControl(Base):
 
     change_number: Mapped[str] = mapped_column(String(50), unique=True, nullable=False, index=True)
     title: Mapped[str] = mapped_column(String(500), nullable=False)
-    change_type: Mapped[str] = mapped_column(String(100), nullable=False)  # process|equipment|material|software|facility
-    change_category: Mapped[str] = mapped_column(String(50), nullable=False)  # minor|major|critical
+    change_type: Mapped[str] = mapped_column(String(100), nullable=False)  # equipment|process|material|software|facility|documentation|supplier|regulatory|other
+    change_category: Mapped[str] = mapped_column(String(50), nullable=False)  # major|minor|emergency
     description: Mapped[str] = mapped_column(Text, nullable=False)
     justification: Mapped[str] = mapped_column(Text, nullable=False)
     risk_assessment: Mapped[str | None] = mapped_column(Text, nullable=True)
     impact_assessment: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     regulatory_impact: Mapped[bool] = mapped_column(Boolean, default=False)
+    regulatory_filing_required: Mapped[bool] = mapped_column(Boolean, default=False)
+    regulatory_filing_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
     validation_required: Mapped[bool] = mapped_column(Boolean, default=False)
+    validation_qualification_required: Mapped[bool] = mapped_column(Boolean, default=False)
+    validation_scope_description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    affected_document_ids: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    affected_equipment_ids: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    affected_sop_document_ids: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    implementation_plan: Mapped[str | None] = mapped_column(Text, nullable=True)
+    implementation_target_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    pre_change_verification_checklist: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    post_change_effectiveness_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    post_change_effectiveness_outcome: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    post_change_effectiveness_approver_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
+    approval_signature_roles: Mapped[list | None] = mapped_column(JSON, nullable=True)
     proposed_implementation_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     actual_implementation_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     site_id: Mapped[str] = mapped_column(String(36), ForeignKey("sites.id"), nullable=False)

@@ -321,14 +321,69 @@ class DeviationAuditEventOut(BaseModel):
 
 # ── Change Control Schemas ────────────────────────────────────────────────────
 
+class ChangeType(str, Enum):
+    equipment = "equipment"
+    process = "process"
+    material = "material"
+    software = "software"
+    facility = "facility"
+    documentation = "documentation"
+    supplier = "supplier"
+    regulatory = "regulatory"
+    other = "other"
+
+
+class ChangeClassification(str, Enum):
+    major = "major"
+    minor = "minor"
+    emergency = "emergency"
+
+
+class RegulatoryFilingType(str, Enum):
+    cbe_30 = "cbe_30"
+    pas = "pas"
+    annual_report = "annual_report"
+    variation = "variation"
+    other = "other"
+
+
+class ChecklistResult(str, Enum):
+    yes = "yes"
+    no = "no"
+    na = "na"
+
+
+class ChecklistItem(BaseModel):
+    item: str
+    result: ChecklistResult
+
+
+class ChangeControlStatus(str, Enum):
+    draft = "draft"
+    under_review = "under_review"
+    approved = "approved"
+    in_implementation = "in_implementation"
+    effectiveness_review = "effectiveness_review"
+    closed = "closed"
+
 class ChangeControlCreate(BaseModel):
     title: str = Field(..., min_length=5)
-    change_type: str
-    change_category: str  # minor | major | critical
+    change_type: ChangeType
+    change_category: ChangeClassification
     description: str = Field(..., min_length=20)
     justification: str = Field(..., min_length=20)
     regulatory_impact: bool = False
+    regulatory_filing_required: bool = False
+    regulatory_filing_type: Optional[RegulatoryFilingType] = None
     validation_required: bool = False
+    validation_qualification_required: bool = False
+    validation_scope_description: Optional[str] = None
+    affected_document_ids: list[str] = []
+    affected_equipment_ids: list[str] = []
+    affected_sop_document_ids: list[str] = []
+    implementation_plan: str = Field(..., min_length=10)
+    implementation_target_date: datetime
+    pre_change_verification_checklist: list[ChecklistItem] = []
     proposed_implementation_date: Optional[datetime] = None
 
 
@@ -340,7 +395,21 @@ class ChangeControlOut(BaseModel):
     change_category: str
     description: str
     regulatory_impact: bool
+    regulatory_filing_required: bool
+    regulatory_filing_type: Optional[str]
     validation_required: bool
+    validation_qualification_required: bool
+    validation_scope_description: Optional[str]
+    affected_document_ids: list[str] = []
+    affected_equipment_ids: list[str] = []
+    affected_sop_document_ids: list[str] = []
+    implementation_plan: Optional[str]
+    implementation_target_date: Optional[datetime]
+    pre_change_verification_checklist: list[ChecklistItem] = []
+    post_change_effectiveness_date: Optional[datetime]
+    post_change_effectiveness_outcome: Optional[str]
+    post_change_effectiveness_approver_id: Optional[str]
+    approval_signature_roles: list[str] = []
     current_status: str
     proposed_implementation_date: Optional[datetime]
     created_at: datetime
@@ -354,7 +423,31 @@ class ChangeControlUpdate(BaseModel):
 
     title: Optional[str] = Field(default=None, min_length=5)
     description: Optional[str] = Field(default=None, min_length=20)
-    change_type: Optional[str] = None
+    change_type: Optional[ChangeType] = None
+    change_category: Optional[ChangeClassification] = None
     risk_assessment: Optional[str] = None
+    regulatory_filing_required: Optional[bool] = None
+    regulatory_filing_type: Optional[RegulatoryFilingType] = None
+    affected_document_ids: Optional[list[str]] = None
+    affected_equipment_ids: Optional[list[str]] = None
+    affected_sop_document_ids: Optional[list[str]] = None
+    implementation_plan: Optional[str] = None
+    implementation_target_date: Optional[datetime] = None
+    validation_qualification_required: Optional[bool] = None
+    validation_scope_description: Optional[str] = None
+    pre_change_verification_checklist: Optional[list[ChecklistItem]] = None
+    post_change_effectiveness_date: Optional[datetime] = None
+    post_change_effectiveness_outcome: Optional[str] = None
+    post_change_effectiveness_approver_id: Optional[str] = None
     current_status: Optional[str] = None
     actual_implementation_date: Optional[datetime] = None
+
+
+class ChangeControlAuditEventOut(BaseModel):
+    user_full_name: str
+    role_at_time: str
+    action: str
+    old_value: Optional[Any]
+    new_value: Optional[Any]
+    timestamp_utc: datetime
+    ip_address: Optional[str]

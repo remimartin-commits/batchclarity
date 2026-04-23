@@ -139,9 +139,11 @@ export const qmsApi = {
     api.patch(`/qms/change-controls/${id}`, data).then((r) => r.data),
   signChangeControl: (id: string, data: unknown) =>
     api.post(`/qms/change-controls/${id}/sign`, data).then((r) => r.data),
+  listChangeControlAuditTrail: (id: string) =>
+    api.get(`/qms/change-controls/${id}/audit-trail`).then((r) => r.data),
   transitionChangeControl: (
     id: string,
-    action: "submit" | "approve" | "implement" | "close"
+    action: "submit" | "approve" | "implement" | "review_effectiveness" | "close"
   ) => api.post(`/qms/change-controls/${id}/${action}`).then((r) => r.data),
 };
 
