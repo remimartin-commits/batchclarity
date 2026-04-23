@@ -378,9 +378,12 @@ class ChangeControlCreate(BaseModel):
     regulatory_impact: bool = False
     regulatory_filing_required: bool = False
     regulatory_filing_type: Optional[RegulatoryFilingType] = None
+    regulatory_filing_deadline: Optional[datetime] = None
     validation_required: bool = False
     validation_qualification_required: bool = False
     validation_scope_description: Optional[str] = None
+    qualification_record_id: Optional[str] = None
+    qualification_status: Optional[str] = None
     affected_document_ids: list[str] = []
     affected_equipment_ids: list[str] = []
     affected_sop_document_ids: list[str] = []
@@ -400,9 +403,12 @@ class ChangeControlOut(BaseModel):
     regulatory_impact: bool
     regulatory_filing_required: bool
     regulatory_filing_type: Optional[str]
+    regulatory_filing_deadline: Optional[datetime]
     validation_required: bool
     validation_qualification_required: bool
     validation_scope_description: Optional[str]
+    qualification_record_id: Optional[str]
+    qualification_status: Optional[str]
     affected_document_ids: list[str] = []
     affected_equipment_ids: list[str] = []
     affected_sop_document_ids: list[str] = []
@@ -412,6 +418,7 @@ class ChangeControlOut(BaseModel):
     post_change_effectiveness_date: Optional[datetime]
     post_change_effectiveness_outcome: Optional[str]
     post_change_effectiveness_approver_id: Optional[str]
+    retrospective_review_due_date: Optional[datetime]
     approval_signature_roles: list[str] = []
     current_status: str
     proposed_implementation_date: Optional[datetime]
@@ -431,6 +438,7 @@ class ChangeControlUpdate(BaseModel):
     risk_assessment: Optional[str] = None
     regulatory_filing_required: Optional[bool] = None
     regulatory_filing_type: Optional[RegulatoryFilingType] = None
+    regulatory_filing_deadline: Optional[datetime] = None
     affected_document_ids: Optional[list[str]] = None
     affected_equipment_ids: Optional[list[str]] = None
     affected_sop_document_ids: Optional[list[str]] = None
@@ -438,6 +446,8 @@ class ChangeControlUpdate(BaseModel):
     implementation_target_date: Optional[datetime] = None
     validation_qualification_required: Optional[bool] = None
     validation_scope_description: Optional[str] = None
+    qualification_record_id: Optional[str] = None
+    qualification_status: Optional[str] = None
     pre_change_verification_checklist: Optional[list[ChecklistItem]] = None
     post_change_effectiveness_date: Optional[datetime] = None
     post_change_effectiveness_outcome: Optional[str] = None

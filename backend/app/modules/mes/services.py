@@ -25,7 +25,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import HTTPException, status
-from sqlalchemy import select, func
+from sqlalchemy import select, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -535,6 +535,34 @@ async def release_batch(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Batch already has a release decision: '{br.release_decision}'.",
+        )
+
+    # Cross-module guardrail: batches with open deviations cannot be released.
+    # Implemented via loose UUID/string linkage only (no cross-module import/FK).
+    open_dev_result = await db.execute(
+        text(
+            """
+            SELECT COUNT(1)
+            FROM deviations
+            WHERE current_status != 'closed'
+              AND (
+                    batch_number = :batch_number
+                 OR CAST(COALESCE(batches_affected, '[]') AS TEXT) LIKE :batch_pattern
+              )
+            """
+        ),
+        {
+            "batch_number": br.batch_number,
+            "batch_pattern": f"%{br.batch_number}%",
+        },
+    )
+    open_deviation_count = int(open_dev_result.scalar() or 0)
+    if data.decision == "released" and open_deviation_count > 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Batch {br.batch_number} has open deviation linkage and cannot be released."
+            ),
         )
 
     sig = await ESignatureService.sign(

@@ -3,11 +3,19 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { qmsApi } from "@/lib/api";
 import ESignatureModal from "@/components/shared/ESignatureModal";
-import { toast } from "@/stores/toastStore";
+import { useToast } from "@/hooks/use-toast";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 type TransitionMeaning = "under_investigation" | "pending_approval" | "closed";
 
 export default function DeviationDetail() {
+  const { toast } = useToast();
   const { id = "" } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -44,7 +52,7 @@ export default function DeviationDetail() {
       });
     },
     onSuccess: async () => {
-      toast.success("Deviation transition completed.");
+      toast({ title: "Deviation transition completed" });
       setPendingMeaning(null);
       setNoCapaConfirmed(false);
       setNoCapaJustification("");
@@ -54,7 +62,11 @@ export default function DeviationDetail() {
     },
     onError: (error: any) => {
       const detail = error?.response?.data?.detail;
-      toast.error(typeof detail === "string" ? detail : "Transition failed.");
+      toast({
+        title: "Transition failed",
+        description: typeof detail === "string" ? detail : "Transition failed.",
+        variant: "destructive",
+      });
     },
   });
 
@@ -74,8 +86,10 @@ export default function DeviationDetail() {
   if (isLoading) return <div className="p-8 text-gray-500">Loading deviation...</div>;
   if (!deviation) return <div className="p-8 text-gray-500">Deviation not found.</div>;
 
+  const isMajorOrCritical = ["major", "critical"].includes(String(deviation.gmp_impact_classification || "").toLowerCase());
+
   return (
-    <div className="p-8 max-w-4xl space-y-5">
+    <div className="p-8 max-w-5xl space-y-5">
       <div className="text-sm text-gray-500">
         <Link to="/qms/deviations" className="text-brand-600 hover:underline">
           Deviations
@@ -83,53 +97,30 @@ export default function DeviationDetail() {
         / {deviation.deviation_number}
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm p-6 space-y-2">
-        <h1 className="text-2xl font-bold text-gray-900">{deviation.title}</h1>
-        <p className="text-sm text-gray-500">
-          Status: {deviation.current_status} • Site ID: {deviation.site_id ?? "—"} • Created:{" "}
-          {deviation.created_at ? new Date(deviation.created_at).toLocaleString() : "—"}
-        </p>
-        <p className="text-sm text-gray-600">
-          Type: {deviation.deviation_type?.replaceAll("_", " ")} • GMP impact:{" "}
-          {deviation.gmp_impact_classification}
-        </p>
-        <p className="text-sm text-gray-600">
-          Product affected: {deviation.product_affected || "—"} • Batches:{" "}
-          {deviation.batches_affected?.length ? deviation.batches_affected.join(", ") : "—"}
-        </p>
-        <p className="text-sm text-gray-600">
-          Patient impact: {deviation.potential_patient_impact ? "Yes" : "No"}{" "}
-          {deviation.potential_patient_impact_justification
-            ? `(${deviation.potential_patient_impact_justification})`
-            : ""}
-        </p>
-        <p className="text-sm text-gray-600">
-          Regulatory notification required:{" "}
-          {deviation.regulatory_notification_required ? "Yes" : "No"}
-          {deviation.regulatory_notification_required && (
-            <>
-              {" "}
-              • Authority: {deviation.regulatory_authority_name || "—"} • Deadline:{" "}
-              {deviation.regulatory_notification_deadline
-                ? new Date(deviation.regulatory_notification_deadline).toLocaleString()
-                : "—"}
-            </>
-          )}
-        </p>
-        <p className="text-sm text-gray-700 whitespace-pre-wrap">{deviation.description}</p>
-        <p className="text-sm text-gray-700 whitespace-pre-wrap">
-          Immediate containment: {deviation.immediate_containment_actions || "—"}
-        </p>
-        <p className="text-sm text-gray-700 whitespace-pre-wrap">
-          Root cause:{" "}
-          {deviation.root_cause
-            ? `${deviation.root_cause_category || "unknown"} - ${deviation.root_cause}`
-            : "—"}
-        </p>
-        <p className="text-sm text-gray-700">
-          Linked CAPA: {deviation.linked_capa_id || "None"}
-        </p>
-      </div>
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-2xl">{deviation.title}</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <div className="flex flex-wrap gap-2">
+            <Badge>{String(deviation.current_status).replaceAll("_", " ")}</Badge>
+            <Badge variant="secondary">{String(deviation.deviation_type).replaceAll("_", " ")}</Badge>
+            <Badge variant="secondary">{String(deviation.gmp_impact_classification).toUpperCase()}</Badge>
+            {deviation.potential_patient_impact && <Badge variant="destructive">Potential Patient Impact</Badge>}
+          </div>
+          <p className="text-sm text-gray-500">
+            {deviation.deviation_number} • Created {deviation.created_at ? new Date(deviation.created_at).toLocaleString() : "—"}
+          </p>
+          <p className="text-sm text-gray-700 whitespace-pre-wrap">{deviation.description}</p>
+          <p className="text-sm text-gray-700">Product affected: {deviation.product_affected || "—"}</p>
+          <p className="text-sm text-gray-700">Batches affected: {deviation.batches_affected?.length ? deviation.batches_affected.join(", ") : "—"}</p>
+          <p className="text-sm text-gray-700">Immediate containment: {deviation.immediate_containment_actions || "—"}</p>
+          <p className="text-sm text-gray-700">
+            Root cause: {deviation.root_cause ? `${deviation.root_cause_category || "unknown"} - ${deviation.root_cause}` : "—"}
+          </p>
+          <p className="text-sm text-gray-700">Linked CAPA: {deviation.linked_capa_id || "None"}</p>
+        </CardContent>
+      </Card>
 
       {limsOriginHint && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
@@ -143,31 +134,27 @@ export default function DeviationDetail() {
         </div>
       )}
 
-      <div className="bg-white rounded-xl shadow-sm p-6 space-y-3">
-        <h2 className="font-semibold text-gray-900">State Transitions</h2>
-        <div className="flex gap-2 items-center">
-          <button
-            className="px-3 py-1.5 border rounded text-sm disabled:opacity-50"
-            disabled={!nextMeaning}
-            onClick={() => nextMeaning && setPendingMeaning(nextMeaning)}
-          >
-            {nextMeaning
-              ? `Move to ${nextMeaning.replaceAll("_", " ")}`
-              : "No transition available"}
-          </button>
-        </div>
+      <Card>
+        <CardHeader className="pb-2"><CardTitle className="text-base">State Transition</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <Button disabled={!nextMeaning} onClick={() => nextMeaning && setPendingMeaning(nextMeaning)}>
+            {nextMeaning ? `Move to ${nextMeaning.replaceAll("_", " ")}` : "No transition available"}
+          </Button>
+          {deviation.potential_patient_impact && (
+            <p className="text-sm text-amber-700">Closure requires QA Director signature because potential patient impact is set.</p>
+          )}
+          {isMajorOrCritical && !deviation.linked_capa_id && (
+            <p className="text-sm text-amber-700">
+              Major/Critical deviations require linked CAPA before closure, or explicit no-CAPA confirmation with written justification.
+            </p>
+          )}
         {nextMeaning === "closed" && !deviation.linked_capa_id && (
           <div className="space-y-2 border border-amber-200 bg-amber-50 rounded-lg p-3">
-            <label className="flex items-center gap-2 text-sm text-amber-900">
-              <input
-                type="checkbox"
-                checked={noCapaConfirmed}
-                onChange={(e) => setNoCapaConfirmed(e.target.checked)}
-              />
-              Confirm no CAPA is needed for closure
-            </label>
-            <textarea
-              className="w-full border border-amber-300 rounded-lg px-3 py-2 text-sm"
+            <div className="flex items-center gap-2">
+              <Checkbox checked={noCapaConfirmed} onCheckedChange={(checked) => setNoCapaConfirmed(Boolean(checked))} />
+              <Label>Confirm no CAPA is needed for closure</Label>
+            </div>
+            <Textarea
               rows={2}
               placeholder="Mandatory justification for closing without CAPA"
               value={noCapaJustification}
@@ -175,50 +162,48 @@ export default function DeviationDetail() {
             />
           </div>
         )}
-      </div>
+        </CardContent>
+      </Card>
 
-      <div className="bg-white rounded-xl shadow-sm p-6">
-        <h2 className="font-semibold text-gray-900 mb-3">Audit Trail</h2>
+      <Card>
+        <CardHeader><CardTitle className="text-base">Audit Trail</CardTitle></CardHeader>
+        <CardContent>
         {!auditTrail.length ? (
           <p className="text-sm text-gray-400">No audit events found.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead className="text-gray-500">
-                <tr>
-                  <th className="text-left py-2">User</th>
-                  <th className="text-left py-2">Role at Time</th>
-                  <th className="text-left py-2">Action</th>
-                  <th className="text-left py-2">Old Value</th>
-                  <th className="text-left py-2">New Value</th>
-                  <th className="text-left py-2">UTC Timestamp</th>
-                  <th className="text-left py-2">IP</th>
-                </tr>
-              </thead>
-              <tbody>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>User</TableHead>
+                  <TableHead>Role at Time</TableHead>
+                  <TableHead>Action</TableHead>
+                  <TableHead>Old Value</TableHead>
+                  <TableHead>New Value</TableHead>
+                  <TableHead>UTC Timestamp</TableHead>
+                  <TableHead>IP</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {auditTrail.map((event: any, idx: number) => (
-                  <tr key={idx} className="border-t border-gray-100">
-                    <td className="py-2">{event.user_full_name || "—"}</td>
-                    <td className="py-2">{event.role_at_time || "—"}</td>
-                    <td className="py-2">{event.action || "—"}</td>
-                    <td className="py-2 break-all">{event.old_value ? JSON.stringify(event.old_value) : "—"}</td>
-                    <td className="py-2 break-all">{event.new_value ? JSON.stringify(event.new_value) : "—"}</td>
-                    <td className="py-2">{event.timestamp_utc ? new Date(event.timestamp_utc).toISOString() : "—"}</td>
-                    <td className="py-2">{event.ip_address || "—"}</td>
-                  </tr>
+                  <TableRow key={idx}>
+                    <TableCell>{event.user_full_name || "—"}</TableCell>
+                    <TableCell>{event.role_at_time || "—"}</TableCell>
+                    <TableCell>{event.action || "—"}</TableCell>
+                    <TableCell className="break-all">{event.old_value ? JSON.stringify(event.old_value) : "—"}</TableCell>
+                    <TableCell className="break-all">{event.new_value ? JSON.stringify(event.new_value) : "—"}</TableCell>
+                    <TableCell>{event.timestamp_utc ? new Date(event.timestamp_utc).toISOString() : "—"}</TableCell>
+                    <TableCell>{event.ip_address || "—"}</TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         )}
-      </div>
+        </CardContent>
+      </Card>
 
-      <button
-        className="text-sm text-gray-500 hover:text-gray-800"
-        onClick={() => navigate("/qms/deviations")}
-      >
-        ← Back to deviations
-      </button>
+      <Button variant="outline" onClick={() => navigate("/qms/deviations")}>Back to deviations</Button>
 
       <ESignatureModal
         isOpen={Boolean(pendingMeaning)}

@@ -519,7 +519,10 @@ Error if Major/Critical with no CAPA and no justification: 422 {"code": "CAPA_RE
 Major/Critical deviations require CAPA or explicit written justification for no CAPA.
 Batches affected by open deviation cannot be released.
 
-- **Status:** PENDING
+- **Status:** DONE — 2026-04-23
+- **Summary:** Deviation workflow hardened with director-gated closure for potential patient impact, CAPA linkage/no-CAPA
+  justification enforcement for Major/Critical closure, and MES batch-release hard-stop when open deviations reference
+  the batch. Deviation list/detail refactored to TanStack Table + shadcn/ui + RHF/Zod and shared ESignatureModal.
 - **Priority:** P0
 - **Lane:** A + B + C
 - **Depends on:** TASK-036 pattern established

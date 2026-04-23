@@ -21,7 +21,7 @@ This layer is also consumed by:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional
 
 from fastapi import HTTPException, status
@@ -77,6 +77,10 @@ async def _role_at_time(db: AsyncSession, user_id: str) -> str:
     )
     names = [row[0] for row in result.all()]
     return ", ".join(names) if names else "Unassigned"
+
+
+def _has_role_keyword(role_snapshot: str, keyword: str) -> bool:
+    return keyword.lower() in (role_snapshot or "").lower()
 
 
 async def _require_permission(db: AsyncSession, user: User, permission_code: str) -> None:
@@ -836,19 +840,36 @@ async def sign_deviation(
         )
     if data.username is None:
         raise HTTPException(status_code=400, detail="Username is required for deviation signatures.")
-    if next_state == "closed" and not deviation.linked_capa_id:
-        if data.no_capa_needed_confirmed is not True:
+    if data.meaning == "pending_approval":
+        if not (deviation.root_cause or "").strip():
             raise HTTPException(
                 status_code=400,
-                detail="Closing without linked CAPA requires explicit no-CAPA confirmation.",
+                detail="Root cause is required before moving deviation to PENDING_APPROVAL.",
             )
-        if not (data.no_capa_needed_justification or "").strip():
+        if deviation.potential_patient_impact and not (deviation.potential_patient_impact_justification or "").strip():
             raise HTTPException(
                 status_code=400,
-                detail="Closing without linked CAPA requires justification.",
+                detail="Patient impact justification is required before moving to PENDING_APPROVAL.",
             )
-        deviation.no_capa_needed_confirmed = True
-        deviation.no_capa_needed_justification = data.no_capa_needed_justification
+    if next_state == "closed":
+        if deviation.potential_patient_impact and not _has_role_keyword(role_at_time, "director"):
+            raise HTTPException(
+                status_code=403,
+                detail="Potential patient impact deviations require QA Director sign-off for closure.",
+            )
+        if deviation.gmp_impact_classification in {"major", "critical"} and not deviation.linked_capa_id:
+            if data.no_capa_needed_confirmed is not True:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Major/Critical deviations require linked CAPA or explicit no-CAPA confirmation.",
+                )
+            if not (data.no_capa_needed_justification or "").strip():
+                raise HTTPException(
+                    status_code=400,
+                    detail="Major/Critical deviations require written no-CAPA justification for closure.",
+                )
+            deviation.no_capa_needed_confirmed = True
+            deviation.no_capa_needed_justification = data.no_capa_needed_justification
 
     sig = await ESignatureService.sign(
         db,
@@ -959,6 +980,8 @@ async def create_change_control(
 
     if data.regulatory_filing_required and data.regulatory_filing_type is None:
         raise HTTPException(status_code=400, detail="Regulatory filing type is required when filing is required.")
+    if data.regulatory_filing_required and data.regulatory_filing_deadline is None:
+        raise HTTPException(status_code=400, detail="Regulatory filing deadline is required when filing is required.")
     if data.validation_qualification_required and not (data.validation_scope_description or "").strip():
         raise HTTPException(status_code=400, detail="Validation scope description is required when validation/qualification is required.")
 
@@ -992,6 +1015,28 @@ async def create_change_control(
             "validation_required": cc.validation_required,
         },
     )
+
+    if data.regulatory_filing_required and data.regulatory_filing_deadline:
+        ninety_days = data.regulatory_filing_deadline - timedelta(days=90)
+        thirty_days = data.regulatory_filing_deadline - timedelta(days=30)
+        await AuditService.log(
+            db,
+            action="REMINDER_SCHEDULED",
+            record_type="change_control",
+            record_id=cc.id,
+            module="qms",
+            human_description=f"Regulatory filing reminders scheduled (90/30 days) for {cc.change_number}",
+            user_id=str(user.id),
+            username=user.username,
+            full_name=user.full_name,
+            role_at_time=role_at_time,
+            ip_address=ip_address,
+            new_value={
+                "regulatory_filing_deadline": data.regulatory_filing_deadline.isoformat(),
+                "reminder_90_days": ninety_days.isoformat(),
+                "reminder_30_days": thirty_days.isoformat(),
+            },
+        )
 
     await db.commit()
     await db.refresh(cc)
@@ -1037,6 +1082,10 @@ async def update_change_control(
         changes.get("regulatory_filing_type", cc.regulatory_filing_type)
     ):
         raise HTTPException(status_code=400, detail="Regulatory filing type is required when filing is required.")
+    if changes.get("regulatory_filing_required", cc.regulatory_filing_required) and not (
+        changes.get("regulatory_filing_deadline", cc.regulatory_filing_deadline)
+    ):
+        raise HTTPException(status_code=400, detail="Regulatory filing deadline is required when filing is required.")
 
     if changes.get(
         "validation_qualification_required", cc.validation_qualification_required
@@ -1062,6 +1111,31 @@ async def update_change_control(
             full_name=user.full_name,
             role_at_time=role_at_time,
             ip_address=ip_address,
+        )
+
+    if changes.get("regulatory_filing_required", cc.regulatory_filing_required) and (
+        changes.get("regulatory_filing_deadline") is not None
+    ):
+        deadline = changes.get("regulatory_filing_deadline")
+        ninety_days = deadline - timedelta(days=90)
+        thirty_days = deadline - timedelta(days=30)
+        await AuditService.log(
+            db,
+            action="REMINDER_SCHEDULED",
+            record_type="change_control",
+            record_id=cc.id,
+            module="qms",
+            human_description=f"Regulatory filing reminders rescheduled (90/30 days) for {cc.change_number}",
+            user_id=str(user.id),
+            username=user.username,
+            full_name=user.full_name,
+            role_at_time=role_at_time,
+            ip_address=ip_address,
+            new_value={
+                "regulatory_filing_deadline": deadline.isoformat(),
+                "reminder_90_days": ninety_days.isoformat(),
+                "reminder_30_days": thirty_days.isoformat(),
+            },
         )
 
     await db.commit()
@@ -1108,6 +1182,7 @@ async def sign_change_control(
     old_status = cc.current_status
     meaning_to_transition = {
         "under_review": ("draft", "under_review"),
+        "qa_director_emergency_approved": ("draft", "approved"),
         "initiator_approved": ("under_review", "approved_pending"),
         "qa_approved": ("under_review", "approved_pending"),
         "in_implementation": ("approved", "in_implementation"),
@@ -1137,6 +1212,22 @@ async def sign_change_control(
     else:
         cc.current_status = target
 
+    if data.meaning == "qa_director_emergency_approved":
+        if cc.change_category != "emergency":
+            raise HTTPException(
+                status_code=400,
+                detail="Emergency direct approval is only allowed for emergency change controls.",
+            )
+        if not _has_role_keyword(role_at_time, "director"):
+            raise HTTPException(
+                status_code=403,
+                detail="Emergency direct approval requires QA Director signature.",
+            )
+        roles = set(cc.approval_signature_roles or [])
+        roles.add("qa_director")
+        cc.approval_signature_roles = sorted(list(roles))
+        cc.retrospective_review_due_date = _utcnow() + timedelta(days=30)
+
     if cc.current_status == "in_implementation" and cc.actual_implementation_date is None:
         cc.actual_implementation_date = _utcnow()
 
@@ -1145,6 +1236,13 @@ async def sign_change_control(
             raise HTTPException(
                 status_code=400,
                 detail="Post-change effectiveness review date and outcome are required before close.",
+            )
+        if cc.validation_required and (
+            not cc.qualification_record_id or cc.qualification_status != "approved"
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="Validation-required changes must reference an approved qualification record before close.",
             )
 
     await AuditService.log(

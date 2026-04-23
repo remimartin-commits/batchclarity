@@ -1,35 +1,118 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import {
+  type ColumnDef,
+  flexRender,
+  getCoreRowModel,
+  getSortedRowModel,
+  type SortingState,
+  useReactTable,
+} from "@tanstack/react-table";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
+import { Controller, useForm } from "react-hook-form";
+import { z } from "zod";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { qmsApi } from "@/lib/api";
-import { toast } from "@/stores/toastStore";
+import { mockGetDeviations } from "@/lib/mock-api";
+import { useToast } from "@/hooks/use-toast";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+
+const deviationSchema = z
+  .object({
+    title: z.string().min(5),
+    deviation_type: z.enum(["process", "equipment", "environmental", "material", "documentation", "personnel", "laboratory", "other"]),
+    gmp_impact_classification: z.enum(["critical", "major", "minor"]),
+    potential_patient_impact: z.boolean(),
+    potential_patient_impact_justification: z.string().optional(),
+    batches_affected_csv: z.string().optional(),
+    product_affected: z.string().min(1),
+    description: z.string().min(20),
+    detected_during: z.string().min(3),
+    immediate_containment_actions: z.string().min(10),
+    root_cause_category: z.enum(["human_error", "equipment", "process", "material", "environment", "documentation", "software_it", "unknown"]),
+    root_cause: z.string().optional(),
+    requires_capa: z.boolean(),
+    regulatory_notification_required: z.boolean(),
+    regulatory_authority_name: z.string().optional(),
+    regulatory_notification_deadline: z.string().optional(),
+  })
+  .refine(
+    (v) => !v.potential_patient_impact || (v.potential_patient_impact_justification ?? "").trim().length >= 5,
+    { message: "Justification is required when potential patient impact is Yes.", path: ["potential_patient_impact_justification"] }
+  )
+  .refine(
+    (v) => !v.regulatory_notification_required || (v.regulatory_authority_name ?? "").trim().length >= 2,
+    { message: "Regulatory authority is required when notification is required.", path: ["regulatory_authority_name"] }
+  )
+  .refine(
+    (v) => !v.regulatory_notification_required || Boolean(v.regulatory_notification_deadline),
+    { message: "Regulatory deadline is required when notification is required.", path: ["regulatory_notification_deadline"] }
+  );
+
+type DeviationCreatePayload = z.infer<typeof deviationSchema>;
+type DeviationRow = any;
+
+const statusStyles: Record<string, string> = {
+  open: "bg-gray-100 text-gray-700 border border-gray-200",
+  under_investigation: "bg-yellow-100 text-yellow-800 border border-yellow-200",
+  pending_approval: "bg-blue-100 text-blue-800 border border-blue-200",
+  closed: "bg-green-100 text-green-700 border border-green-200",
+};
 
 export default function DeviationList() {
+  const { toast } = useToast();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
-  const [form, setForm] = useState({
-    title: "",
-    deviation_type: "process",
-    gmp_impact_classification: "major",
-    potential_patient_impact: false,
-    potential_patient_impact_justification: "",
-    batches_affected: "",
-    product_affected: "",
-    description: "",
-    detected_during: "manufacturing",
-    immediate_containment_actions: "",
-    root_cause_category: "unknown",
-    root_cause: "",
-    requires_capa: false,
-    regulatory_notification_required: false,
-    regulatory_authority_name: "",
-    regulatory_notification_deadline: "",
+  const [sorting, setSorting] = useState<SortingState>([]);
+  const useMock = Boolean(import.meta.env.VITE_USE_MOCK);
+
+  const form = useForm<DeviationCreatePayload>({
+    resolver: zodResolver(deviationSchema),
+    defaultValues: {
+      title: "",
+      deviation_type: "process",
+      gmp_impact_classification: "major",
+      potential_patient_impact: false,
+      potential_patient_impact_justification: "",
+      batches_affected_csv: "",
+      product_affected: "",
+      description: "",
+      detected_during: "manufacturing",
+      immediate_containment_actions: "",
+      root_cause_category: "unknown",
+      root_cause: "",
+      requires_capa: false,
+      regulatory_notification_required: false,
+      regulatory_authority_name: "",
+      regulatory_notification_deadline: "",
+    },
   });
 
   const { data: deviations = [], isLoading } = useQuery({
     queryKey: ["deviations"],
-    queryFn: () => qmsApi.listDeviations({ skip: 0, limit: 200 }),
+    queryFn: async () => {
+      if (useMock) {
+        const result = await mockGetDeviations();
+        return result.items.map((d) => ({
+          ...d,
+          current_status: String(d.status).toLowerCase(),
+          created_at: d.created_at,
+          description: d.description,
+          gmp_impact_classification: String(d.gmp_impact_classification).toLowerCase(),
+        }));
+      }
+      return qmsApi.listDeviations({ skip: 0, limit: 200 });
+    },
   });
 
   const createMutation = useMutation({
@@ -37,255 +120,267 @@ export default function DeviationList() {
     onSuccess: (created) => {
       queryClient.invalidateQueries({ queryKey: ["deviations"] });
       setCreateOpen(false);
-      toast.success(`Deviation ${created.deviation_number} created.`);
+      toast({ title: "Deviation created", description: `Deviation ${created.deviation_number} created.` });
       navigate(`/qms/deviations/${created.id}`);
+      form.reset();
     },
     onError: (error: any) => {
       const detail = error?.response?.data?.detail;
-      toast.error(typeof detail === "string" ? detail : "Failed to create deviation.");
+      toast({ title: "Create failed", description: typeof detail === "string" ? detail : "Failed to create deviation.", variant: "destructive" });
     },
   });
 
+  const rows = useMemo(() => deviations ?? [], [deviations]);
+  const columns = useMemo<ColumnDef<DeviationRow>[]>(
+    () => [
+      { accessorKey: "deviation_number", header: "Deviation #", cell: ({ row }) => <span className="font-mono">{row.original.deviation_number}</span> },
+      { accessorKey: "title", header: "Title" },
+      {
+        accessorKey: "current_status",
+        header: "Status",
+        cell: ({ row }) => (
+          <Badge className={statusStyles[row.original.current_status] ?? statusStyles.open}>
+            {String(row.original.current_status).replaceAll("_", " ")}
+          </Badge>
+        ),
+      },
+      {
+        accessorKey: "gmp_impact_classification",
+        header: "GMP Impact",
+        cell: ({ row }) => String(row.original.gmp_impact_classification ?? "—").toUpperCase(),
+      },
+      {
+        accessorKey: "created_at",
+        header: "Created",
+        cell: ({ row }) => (row.original.created_at ? new Date(row.original.created_at).toLocaleString() : "—"),
+      },
+    ],
+    []
+  );
+
+  const table = useReactTable({
+    data: rows,
+    columns,
+    state: { sorting },
+    onSortingChange: setSorting,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+  });
+
+  const onSubmit = form.handleSubmit((values) => {
+    createMutation.mutate({
+      title: values.title,
+      deviation_type: values.deviation_type,
+      gmp_impact_classification: values.gmp_impact_classification,
+      potential_patient_impact: values.potential_patient_impact,
+      potential_patient_impact_justification: values.potential_patient_impact_justification || undefined,
+      batches_affected: (values.batches_affected_csv || "").split(",").map((x) => x.trim()).filter(Boolean),
+      product_affected: values.product_affected,
+      description: values.description,
+      detected_during: values.detected_during,
+      detection_date: new Date().toISOString(),
+      risk_level: values.gmp_impact_classification === "critical" ? "critical" : "high",
+      immediate_containment_actions: values.immediate_containment_actions,
+      immediate_action: values.immediate_containment_actions,
+      root_cause_category: values.root_cause_category,
+      root_cause: values.root_cause || undefined,
+      requires_capa: values.requires_capa,
+      regulatory_notification_required: values.regulatory_notification_required,
+      regulatory_authority_name: values.regulatory_authority_name || undefined,
+      regulatory_notification_deadline: values.regulatory_notification_deadline
+        ? new Date(values.regulatory_notification_deadline).toISOString()
+        : undefined,
+    });
+  });
+
   return (
-    <div className="p-8">
-      <div className="flex items-center justify-between mb-6">
+    <div className="p-8 space-y-6">
+      <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Deviations</h1>
-          <p className="text-gray-500 text-sm mt-1">Manufacturing & process deviations</p>
+          <p className="text-sm text-gray-500 mt-1">Track GMP deviations with CAPA linkage controls.</p>
         </div>
-        <button
-          onClick={() => setCreateOpen(true)}
-          className="bg-brand-600 hover:bg-brand-700 text-white font-semibold px-4 py-2 rounded-lg text-sm transition-colors"
-        >
-          + New Deviation
-        </button>
+        <Button onClick={() => setCreateOpen(true)}>New Deviation</Button>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b border-gray-100">
-            <tr>
-              {["Status", "Description", "Site ID", "Created At"].map((h) => (
-                <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Deviation List</CardTitle>
+          <CardDescription>Sortable by status and GMP impact classification.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              {table.getHeaderGroups().map((headerGroup) => (
+                <TableRow key={headerGroup.id}>
+                  {headerGroup.headers.map((header) => (
+                    <TableHead key={header.id} onClick={header.column.getToggleSortingHandler()} className="cursor-pointer">
+                      {flexRender(header.column.columnDef.header, header.getContext())}
+                    </TableHead>
+                  ))}
+                </TableRow>
               ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-50">
-            {isLoading ? (
-              <tr><td colSpan={4} className="text-center py-8 text-gray-400">Loading...</td></tr>
-            ) : deviations.length === 0 ? (
-              <tr><td colSpan={4} className="text-center py-8 text-gray-400">No deviations recorded yet.</td></tr>
-            ) : deviations.map((d: any) => (
-              <tr
-                key={d.id}
-                className="hover:bg-gray-50 cursor-pointer"
-                onClick={() => navigate(`/qms/deviations/${d.id}`)}
-              >
-                <td className="px-4 py-3">
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-800 font-medium">
-                    {d.current_status.replace(/_/g, " ")}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-gray-700 max-w-lg truncate">{d.description ?? d.title}</td>
-                <td className="px-4 py-3 text-gray-600 font-mono text-xs">{d.site_id ?? "—"}</td>
-                <td className="px-4 py-3 text-gray-600 text-xs">
-                  {d.created_at ? new Date(d.created_at).toLocaleString() : "—"}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </TableHeader>
+            <TableBody>
+              {isLoading ? (
+                <TableRow><TableCell colSpan={5} className="py-8 text-center text-gray-500">Loading deviations...</TableCell></TableRow>
+              ) : table.getRowModel().rows.length === 0 ? (
+                <TableRow><TableCell colSpan={5} className="py-8 text-center text-gray-500">No deviations found.</TableCell></TableRow>
+              ) : (
+                table.getRowModel().rows.map((row) => (
+                  <TableRow key={row.id} onClick={() => navigate(`/qms/deviations/${row.original.id}`)} className="cursor-pointer">
+                    {row.getVisibleCells().map((cell) => (
+                      <TableCell key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>
+                    ))}
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
 
-      {createOpen && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl p-6 max-h-[90vh] overflow-y-auto">
-            <h2 className="text-lg font-semibold text-gray-900">Create Deviation</h2>
-            <div className="grid grid-cols-2 gap-3 mt-4">
-              <input
-                className="border border-gray-200 rounded-lg px-3 py-2 text-sm col-span-2"
-                placeholder="Title"
-                value={form.title}
-                onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Create Deviation</DialogTitle>
+            <DialogDescription>RHF + Zod validated deviation creation.</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={onSubmit} className="grid grid-cols-2 gap-3">
+            <div className="col-span-2"><Label>Title</Label><Input {...form.register("title")} /></div>
+
+            <div>
+              <Label>Deviation Type</Label>
+              <Controller
+                control={form.control}
+                name="deviation_type"
+                render={({ field }) => (
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="process">Process</SelectItem>
+                      <SelectItem value="equipment">Equipment</SelectItem>
+                      <SelectItem value="environmental">Environmental</SelectItem>
+                      <SelectItem value="material">Material</SelectItem>
+                      <SelectItem value="documentation">Documentation</SelectItem>
+                      <SelectItem value="personnel">Personnel</SelectItem>
+                      <SelectItem value="laboratory">Laboratory</SelectItem>
+                      <SelectItem value="other">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
               />
-              <select
-                className="border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                value={form.deviation_type}
-                onChange={(e) => setForm((f) => ({ ...f, deviation_type: e.target.value }))}
-              >
-                <option value="process">Process</option>
-                <option value="equipment">Equipment</option>
-                <option value="environmental">Environmental</option>
-                <option value="material">Material</option>
-                <option value="documentation">Documentation</option>
-                <option value="personnel">Personnel</option>
-                <option value="laboratory">Laboratory</option>
-                <option value="other">Other</option>
-              </select>
-              <select
-                className="border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                value={form.gmp_impact_classification}
-                onChange={(e) => setForm((f) => ({ ...f, gmp_impact_classification: e.target.value }))}
-              >
-                <option value="critical">Critical</option>
-                <option value="major">Major</option>
-                <option value="minor">Minor</option>
-              </select>
-              <input
-                className="border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                placeholder="Product affected"
-                value={form.product_affected}
-                onChange={(e) => setForm((f) => ({ ...f, product_affected: e.target.value }))}
-              />
-              <input
-                className="border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                placeholder="Batch(es) affected (comma-separated lot numbers)"
-                value={form.batches_affected}
-                onChange={(e) => setForm((f) => ({ ...f, batches_affected: e.target.value }))}
-              />
-              <label className="col-span-2 flex items-center gap-2 text-sm text-gray-700">
-                <input
-                  type="checkbox"
-                  checked={form.potential_patient_impact}
-                  onChange={(e) => setForm((f) => ({ ...f, potential_patient_impact: e.target.checked }))}
-                />
-                Potential patient impact
-              </label>
-              {form.potential_patient_impact && (
-                <textarea
-                  className="border border-gray-200 rounded-lg px-3 py-2 text-sm col-span-2"
-                  rows={2}
-                  placeholder="Patient impact justification"
-                  value={form.potential_patient_impact_justification}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, potential_patient_impact_justification: e.target.value }))
-                  }
-                />
-              )}
-              <textarea
-                className="border border-gray-200 rounded-lg px-3 py-2 text-sm col-span-2"
-                rows={3}
-                placeholder="Description"
-                value={form.description}
-                onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-              />
-              <textarea
-                className="border border-gray-200 rounded-lg px-3 py-2 text-sm col-span-2"
-                rows={3}
-                placeholder="Immediate containment actions (required)"
-                value={form.immediate_containment_actions}
-                onChange={(e) => setForm((f) => ({ ...f, immediate_containment_actions: e.target.value }))}
-              />
-              <select
-                className="border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                value={form.root_cause_category}
-                onChange={(e) => setForm((f) => ({ ...f, root_cause_category: e.target.value }))}
-              >
-                <option value="human_error">Human Error</option>
-                <option value="equipment">Equipment</option>
-                <option value="process">Process</option>
-                <option value="material">Material</option>
-                <option value="environment">Environment</option>
-                <option value="documentation">Documentation</option>
-                <option value="software_it">Software-IT</option>
-                <option value="unknown">Unknown</option>
-              </select>
-              <input
-                className="border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                placeholder="Root cause description"
-                value={form.root_cause}
-                onChange={(e) => setForm((f) => ({ ...f, root_cause: e.target.value }))}
-              />
-              <label className="col-span-2 flex items-center gap-2 text-sm text-gray-700">
-                <input
-                  type="checkbox"
-                  checked={form.requires_capa}
-                  onChange={(e) => setForm((f) => ({ ...f, requires_capa: e.target.checked }))}
-                />
-                Root cause requires CAPA
-              </label>
-              <label className="col-span-2 flex items-center gap-2 text-sm text-gray-700">
-                <input
-                  type="checkbox"
-                  checked={form.regulatory_notification_required}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, regulatory_notification_required: e.target.checked }))
-                  }
-                />
-                Regulatory notification required
-              </label>
-              {form.regulatory_notification_required && (
-                <>
-                  <input
-                    className="border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                    placeholder="Regulatory authority name"
-                    value={form.regulatory_authority_name}
-                    onChange={(e) =>
-                      setForm((f) => ({ ...f, regulatory_authority_name: e.target.value }))
-                    }
-                  />
-                  <input
-                    type="datetime-local"
-                    className="border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                    value={form.regulatory_notification_deadline}
-                    onChange={(e) =>
-                      setForm((f) => ({ ...f, regulatory_notification_deadline: e.target.value }))
-                    }
-                  />
-                </>
-              )}
             </div>
-            <div className="flex gap-3 mt-5">
-              <button
-                className="flex-1 border border-gray-300 rounded-lg py-2 text-sm"
-                onClick={() => setCreateOpen(false)}
-              >
-                Cancel
-              </button>
-              <button
-                className="flex-1 bg-brand-600 text-white rounded-lg py-2 text-sm font-semibold disabled:opacity-50"
-                disabled={
-                  createMutation.isPending ||
-                  form.title.trim().length < 5 ||
-                  form.description.trim().length < 20 ||
-                  form.immediate_containment_actions.trim().length < 10
-                }
-                onClick={() =>
-                  createMutation.mutate({
-                    title: form.title,
-                    deviation_type: form.deviation_type,
-                    gmp_impact_classification: form.gmp_impact_classification,
-                    potential_patient_impact: form.potential_patient_impact,
-                    potential_patient_impact_justification:
-                      form.potential_patient_impact_justification || undefined,
-                    batches_affected: form.batches_affected
-                      .split(",")
-                      .map((x) => x.trim())
-                      .filter(Boolean),
-                    product_affected: form.product_affected || undefined,
-                    description: form.description,
-                    detected_during: form.detected_during,
-                    detection_date: new Date().toISOString(),
-                    risk_level: "high",
-                    immediate_containment_actions: form.immediate_containment_actions,
-                    immediate_action: form.immediate_containment_actions,
-                    root_cause_category: form.root_cause_category || undefined,
-                    root_cause: form.root_cause || undefined,
-                    requires_capa: form.requires_capa,
-                    regulatory_notification_required: form.regulatory_notification_required,
-                    regulatory_authority_name: form.regulatory_authority_name || undefined,
-                    regulatory_notification_deadline: form.regulatory_notification_deadline
-                      ? new Date(form.regulatory_notification_deadline).toISOString()
-                      : undefined,
-                  })
-                }
-              >
+
+            <div>
+              <Label>GMP Impact</Label>
+              <Controller
+                control={form.control}
+                name="gmp_impact_classification"
+                render={({ field }) => (
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="critical">Critical</SelectItem>
+                      <SelectItem value="major">Major</SelectItem>
+                      <SelectItem value="minor">Minor</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            </div>
+
+            <div><Label>Product affected</Label><Input {...form.register("product_affected")} /></div>
+            <div><Label>Batches affected (comma-separated)</Label><Input {...form.register("batches_affected_csv")} /></div>
+
+            <div className="col-span-2 flex items-center gap-2">
+              <Controller
+                control={form.control}
+                name="potential_patient_impact"
+                render={({ field }) => (
+                  <Checkbox checked={field.value} onCheckedChange={(checked) => field.onChange(Boolean(checked))} />
+                )}
+              />
+              <Label>Potential patient impact</Label>
+            </div>
+
+            {form.watch("potential_patient_impact") && (
+              <div className="col-span-2">
+                <Label>Patient impact justification</Label>
+                <Textarea rows={2} {...form.register("potential_patient_impact_justification")} />
+              </div>
+            )}
+
+            <div className="col-span-2"><Label>Description</Label><Textarea rows={3} {...form.register("description")} /></div>
+            <div className="col-span-2"><Label>Detected During</Label><Input {...form.register("detected_during")} /></div>
+            <div className="col-span-2"><Label>Immediate containment actions</Label><Textarea rows={2} {...form.register("immediate_containment_actions")} /></div>
+
+            <div>
+              <Label>Root Cause Category</Label>
+              <Controller
+                control={form.control}
+                name="root_cause_category"
+                render={({ field }) => (
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="human_error">Human Error</SelectItem>
+                      <SelectItem value="equipment">Equipment</SelectItem>
+                      <SelectItem value="process">Process</SelectItem>
+                      <SelectItem value="material">Material</SelectItem>
+                      <SelectItem value="environment">Environment</SelectItem>
+                      <SelectItem value="documentation">Documentation</SelectItem>
+                      <SelectItem value="software_it">Software-IT</SelectItem>
+                      <SelectItem value="unknown">Unknown</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            </div>
+            <div><Label>Root Cause</Label><Input {...form.register("root_cause")} /></div>
+
+            <div className="col-span-2 flex items-center gap-2">
+              <Controller
+                control={form.control}
+                name="requires_capa"
+                render={({ field }) => (
+                  <Checkbox checked={field.value} onCheckedChange={(checked) => field.onChange(Boolean(checked))} />
+                )}
+              />
+              <Label>Requires CAPA linkage</Label>
+            </div>
+
+            <div className="col-span-2 flex items-center gap-2">
+              <Controller
+                control={form.control}
+                name="regulatory_notification_required"
+                render={({ field }) => (
+                  <Checkbox checked={field.value} onCheckedChange={(checked) => field.onChange(Boolean(checked))} />
+                )}
+              />
+              <Label>Regulatory notification required</Label>
+            </div>
+
+            {form.watch("regulatory_notification_required") && (
+              <>
+                <div><Label>Regulatory authority</Label><Input {...form.register("regulatory_authority_name")} /></div>
+                <div><Label>Regulatory deadline</Label><Input type="datetime-local" {...form.register("regulatory_notification_deadline")} /></div>
+              </>
+            )}
+
+            {Object.values(form.formState.errors).length > 0 && (
+              <p className="col-span-2 text-sm text-red-600">Please resolve validation errors before creating the deviation.</p>
+            )}
+
+            <DialogFooter className="col-span-2">
+              <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
+              <Button type="submit" disabled={createMutation.isPending}>
                 {createMutation.isPending ? "Creating..." : "Create Deviation"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

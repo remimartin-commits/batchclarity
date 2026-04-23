@@ -106,6 +106,7 @@ def test_qms_change_control_create_update_and_filter(client, seeded_db):
     token = _login(client, seeded_db["admin_username"], seeded_db["admin_password"])
     tomorrow = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
     day_after = (datetime.now(timezone.utc) + timedelta(days=2)).isoformat()
+    filing_deadline = (datetime.now(timezone.utc) + timedelta(days=120)).isoformat()
 
     create = client.post(
         "/api/v1/qms/change-controls",
@@ -119,6 +120,7 @@ def test_qms_change_control_create_update_and_filter(client, seeded_db):
             "regulatory_impact": True,
             "regulatory_filing_required": True,
             "regulatory_filing_type": "pas",
+            "regulatory_filing_deadline": filing_deadline,
             "validation_required": True,
             "validation_qualification_required": True,
             "validation_scope_description": "IQ/OQ for updated cleaning process limits.",
@@ -139,7 +141,12 @@ def test_qms_change_control_create_update_and_filter(client, seeded_db):
     patch = client.patch(
         f"/api/v1/qms/change-controls/{cc_id}",
         headers=_auth_header(token),
-        json={"post_change_effectiveness_date": day_after, "post_change_effectiveness_outcome": "Change effective"},
+        json={
+            "post_change_effectiveness_date": day_after,
+            "post_change_effectiveness_outcome": "Change effective",
+            "qualification_record_id": "QUAL-0001",
+            "qualification_status": "approved",
+        },
     )
     assert patch.status_code == 200, patch.text
 
@@ -234,6 +241,104 @@ def test_qms_change_control_create_update_and_filter(client, seeded_db):
     assert close.status_code == 200, close.text
 
 
+def test_qms_change_control_emergency_director_approval_path(client, seeded_db):
+    token = _login(client, seeded_db["admin_username"], seeded_db["admin_password"])
+    target = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
+
+    create = client.post(
+        "/api/v1/qms/change-controls",
+        headers=_auth_header(token),
+        json={
+            "title": "Emergency sterile filter replacement",
+            "change_type": "equipment",
+            "change_category": "emergency",
+            "description": "Emergency replacement required to prevent line shutdown and contamination risk.",
+            "justification": "Unexpected integrity failure during production campaign.",
+            "regulatory_impact": False,
+            "regulatory_filing_required": False,
+            "validation_required": False,
+            "validation_qualification_required": False,
+            "implementation_plan": "Install validated spare, execute emergency checks, and document retrospective review.",
+            "implementation_target_date": target,
+            "pre_change_verification_checklist": [{"item": "Spare availability", "result": "yes"}],
+        },
+    )
+    assert create.status_code == 201, create.text
+    cc_id = create.json()["id"]
+
+    emergency_approve = client.post(
+        f"/api/v1/qms/change-controls/{cc_id}/sign",
+        headers=_auth_header(token),
+        json={
+            "username": seeded_db["admin_username"],
+            "password": seeded_db["admin_password"],
+            "meaning": "qa_director_emergency_approved",
+            "comments": "Director emergency approval",
+        },
+    )
+    assert emergency_approve.status_code == 403, emergency_approve.text
+
+
+def test_qms_change_control_validation_required_blocks_close_without_qualification(client, seeded_db):
+    token = _login(client, seeded_db["admin_username"], seeded_db["admin_password"])
+    tomorrow = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
+    day_after = (datetime.now(timezone.utc) + timedelta(days=2)).isoformat()
+
+    create = client.post(
+        "/api/v1/qms/change-controls",
+        headers=_auth_header(token),
+        json={
+            "title": "Validation-bound process parameter update",
+            "change_type": "process",
+            "change_category": "major",
+            "description": "Change requires validation record before closure per GMP rule.",
+            "justification": "Reduce process variability while preserving critical quality attributes.",
+            "regulatory_impact": False,
+            "regulatory_filing_required": False,
+            "validation_required": True,
+            "validation_qualification_required": True,
+            "validation_scope_description": "PQ confirmation after implementation",
+            "implementation_plan": "Execute update and validate against approved protocol.",
+            "implementation_target_date": tomorrow,
+            "pre_change_verification_checklist": [{"item": "Protocol drafted", "result": "yes"}],
+        },
+    )
+    assert create.status_code == 201, create.text
+    cc_id = create.json()["id"]
+
+    patch = client.patch(
+        f"/api/v1/qms/change-controls/{cc_id}",
+        headers=_auth_header(token),
+        json={"post_change_effectiveness_date": day_after, "post_change_effectiveness_outcome": "effective"},
+    )
+    assert patch.status_code == 200, patch.text
+
+    for meaning in ["under_review", "initiator_approved", "qa_approved", "in_implementation", "effectiveness_review"]:
+        transition = client.post(
+            f"/api/v1/qms/change-controls/{cc_id}/sign",
+            headers=_auth_header(token),
+            json={
+                "username": seeded_db["admin_username"],
+                "password": seeded_db["admin_password"],
+                "meaning": meaning,
+                "comments": f"{meaning} transition",
+            },
+        )
+        assert transition.status_code == 200, transition.text
+
+    close = client.post(
+        f"/api/v1/qms/change-controls/{cc_id}/sign",
+        headers=_auth_header(token),
+        json={
+            "username": seeded_db["admin_username"],
+            "password": seeded_db["admin_password"],
+            "meaning": "closed",
+            "comments": "Attempt close without qualification approval",
+        },
+    )
+    assert close.status_code == 400, close.text
+
+
 def test_qms_transition_requires_permission(client, seeded_db):
     admin_token = _login(client, seeded_db["admin_username"], seeded_db["admin_password"])
     operator_token = _login(client, "operator", "Operator1234!")
@@ -268,3 +373,68 @@ def test_qms_transition_requires_permission(client, seeded_db):
         },
     )
     assert forbidden.status_code == 403, forbidden.text
+
+
+def test_qms_deviation_close_with_patient_impact_requires_director(client, seeded_db):
+    token = _login(client, seeded_db["admin_username"], seeded_db["admin_password"])
+    now = datetime.now(timezone.utc).isoformat()
+
+    create = client.post(
+        "/api/v1/qms/deviations",
+        headers=_auth_header(token),
+        json={
+            "title": "Potential patient impact deviation",
+            "deviation_type": "process",
+            "gmp_impact_classification": "major",
+            "description": "Potential patient impact scenario that requires director-level closure sign-off.",
+            "detected_during": "manufacturing",
+            "detection_date": now,
+            "risk_level": "critical",
+            "product_affected": "Drug Product X",
+            "batches_affected": ["BATCH-PATIENT-001"],
+            "immediate_action": "Contained and investigated.",
+            "immediate_containment_actions": "Contained and investigated.",
+            "potential_patient_impact": True,
+            "potential_patient_impact_justification": "Potentially impacted quality attributes.",
+            "root_cause": "In-process parameter excursion",
+            "requires_capa": True,
+        },
+    )
+    assert create.status_code == 201, create.text
+    deviation_id = create.json()["id"]
+
+    under_investigation = client.post(
+        f"/api/v1/qms/deviations/{deviation_id}/sign",
+        headers=_auth_header(token),
+        json={
+            "username": seeded_db["admin_username"],
+            "password": seeded_db["admin_password"],
+            "meaning": "under_investigation",
+            "comments": "Move to under investigation",
+        },
+    )
+    assert under_investigation.status_code == 200, under_investigation.text
+
+    pending_approval = client.post(
+        f"/api/v1/qms/deviations/{deviation_id}/sign",
+        headers=_auth_header(token),
+        json={
+            "username": seeded_db["admin_username"],
+            "password": seeded_db["admin_password"],
+            "meaning": "pending_approval",
+            "comments": "Ready for QA closure decision",
+        },
+    )
+    assert pending_approval.status_code == 200, pending_approval.text
+
+    close_attempt = client.post(
+        f"/api/v1/qms/deviations/{deviation_id}/sign",
+        headers=_auth_header(token),
+        json={
+            "username": seeded_db["admin_username"],
+            "password": seeded_db["admin_password"],
+            "meaning": "closed",
+            "comments": "Close attempt by non-director role",
+        },
+    )
+    assert close_attempt.status_code == 403, close_attempt.text
