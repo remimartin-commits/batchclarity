@@ -1,143 +1,79 @@
-import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { equipmentApi, qmsApi, trainingApi } from "@/lib/api";
+import { dashboardApi } from "@/lib/api";
+import { mockGetDashboardSummary } from "@/lib/mock-api";
 import { useAuthStore } from "@/stores/authStore";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 
 export default function Dashboard() {
   const user = useAuthStore((s) => s.user);
-  const { data: capas = [], isLoading: loadingCapas } = useQuery({
-    queryKey: ["dashboard-capas"],
-    queryFn: () => qmsApi.listCapas({ skip: 0, limit: 500 }),
-  });
-  const { data: deviations = [], isLoading: loadingDeviations } = useQuery({
-    queryKey: ["dashboard-deviations"],
-    queryFn: () => qmsApi.listDeviations({ skip: 0, limit: 500 }),
-  });
-  const { data: myAssignments = [], isLoading: loadingAssignments } = useQuery({
-    queryKey: ["dashboard-training-my-assignments"],
-    queryFn: trainingApi.myAssignments,
-  });
-  const { data: equipment = [], isLoading: loadingEquipment } = useQuery({
-    queryKey: ["dashboard-equipment"],
-    queryFn: () => equipmentApi.listEquipment({ skip: 0, limit: 500 }),
+  const useMock = Boolean(import.meta.env.VITE_USE_MOCK);
+  const { data: summary, isLoading } = useQuery({
+    queryKey: ["dashboard-summary"],
+    queryFn: () => (useMock ? mockGetDashboardSummary() : dashboardApi.summary()),
+    refetchInterval: 60_000,
   });
 
-  const { data: calibrationCounts = { dueThisWeek: 0 }, isLoading: loadingCalibrations } = useQuery({
-    queryKey: ["dashboard-calibration-due-this-week", (equipment as any[]).map((e: any) => e.id)],
-    enabled: (equipment as any[]).length > 0,
-    queryFn: async () => {
-      const now = new Date();
-      const weekAhead = new Date(now);
-      weekAhead.setDate(now.getDate() + 7);
-      const all = await Promise.all(
-        (equipment as any[]).map(async (e: any) => {
-          const records = (await equipmentApi.listCalibrations(e.id)) as any[];
-          return records;
-        })
-      );
-      const flattened = all.flat();
-      const dueThisWeek = flattened.filter((record: any) => {
-        if (!record.next_calibration_due) return false;
-        const due = new Date(record.next_calibration_due);
-        return due >= now && due <= weekAhead;
-      }).length;
-      return { dueThisWeek };
-    },
-  });
-
-  const overdueCapas = useMemo(
-    () =>
-      (capas as any[]).filter((capa: any) => {
-        if (!capa.target_completion_date) return false;
-        if (["closed", "completed", "cancelled"].includes(capa.current_status)) return false;
-        return new Date(capa.target_completion_date) < new Date();
-      }).length,
-    [capas]
-  );
-
-  const openDeviations = useMemo(
-    () =>
-      (deviations as any[]).filter(
-        (d: any) => !["closed", "completed", "cancelled"].includes(d.current_status)
-      ).length,
-    [deviations]
-  );
-
-  const pendingAssignments = useMemo(
-    () =>
-      (myAssignments as any[]).filter((a: any) =>
-        ["pending", "overdue", "in_progress"].includes(a.status)
-      ).length,
-    [myAssignments]
-  );
-
-  const isLoadingAny =
-    loadingCapas ||
-    loadingDeviations ||
-    loadingAssignments ||
-    loadingEquipment ||
-    loadingCalibrations;
+  const kpis = [
+    { title: "Open CAPAs", value: summary?.open_capas ?? 0, to: "/qms/capas?status_filter=open" },
+    { title: "Overdue CAPAs", value: summary?.overdue_capas ?? 0, to: "/qms/capas" },
+    { title: "Open Deviations", value: summary?.open_deviations ?? 0, to: "/qms/deviations" },
+    { title: "Overdue Deviations", value: summary?.overdue_deviations ?? 0, to: "/qms/deviations" },
+    { title: "Pending Change Controls", value: summary?.pending_change_controls ?? 0, to: "/qms/change-controls" },
+    { title: "Calibrations Due (30d)", value: summary?.calibrations_due_30_days ?? 0, to: "/equipment" },
+    { title: "Calibrations Overdue", value: summary?.calibrations_overdue ?? 0, to: "/equipment" },
+    { title: "Open OOS Investigations", value: summary?.open_oos_investigations ?? 0, to: "/lims/samples" },
+    { title: "Documents Expiring (60d)", value: summary?.documents_expiring_60_days ?? 0, to: "/documents" },
+    { title: "Training Overdue", value: summary?.training_overdue ?? 0, to: "/training" },
+    { title: "Pending My Signatures", value: summary?.pending_my_signatures ?? 0, to: "/security" },
+  ];
 
   return (
-    <div className="p-8">
-      <div className="mb-8">
+    <div className="p-8 space-y-6">
+      <div>
         <h1 className="text-2xl font-bold text-gray-900">Welcome back, {user?.full_name?.split(" ")[0]}</h1>
-        <p className="text-gray-500 mt-1">Live operations summary from validated module APIs.</p>
+        <p className="text-gray-500 mt-1">Live GMP KPI summary, refreshed every minute.</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
-        <SummaryCard
-          title="Open CAPAs Overdue"
-          value={overdueCapas}
-          loading={isLoadingAny}
-          accent="border-l-red-500"
-          to="/qms/capas"
-        />
-        <SummaryCard
-          title="Open Deviations"
-          value={openDeviations}
-          loading={isLoadingAny}
-          accent="border-l-amber-500"
-          to="/qms/deviations"
-        />
-        <SummaryCard
-          title="Pending Training Assignments"
-          value={pendingAssignments}
-          loading={isLoadingAny}
-          accent="border-l-indigo-500"
-          to="/training"
-        />
-        <SummaryCard
-          title="Calibration Due This Week"
-          value={calibrationCounts.dueThisWeek}
-          loading={isLoadingAny}
-          accent="border-l-emerald-500"
-          to="/equipment"
-        />
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+        {kpis.map((kpi) => (
+          <Link key={kpi.title} to={kpi.to}>
+            <Card className="hover:shadow-md transition-shadow">
+              <CardHeader className="pb-2">
+                <CardDescription>{kpi.title}</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <CardTitle className="text-3xl">{isLoading ? "..." : kpi.value}</CardTitle>
+              </CardContent>
+            </Card>
+          </Link>
+        ))}
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">My Actions</CardTitle>
+          <CardDescription>Items requiring your signature or action today.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {!summary?.pending_my_actions?.length ? (
+            <p className="text-sm text-gray-500">No pending actions.</p>
+          ) : (
+            summary.pending_my_actions.map((item: any) => (
+              <div key={item.id} className="flex items-center justify-between border rounded-md p-2">
+                <div>
+                  <p className="text-sm font-medium">{item.title}</p>
+                  <p className="text-xs text-gray-500">
+                    {item.due_date ? new Date(item.due_date).toLocaleDateString() : "No due date"}
+                  </p>
+                </div>
+                <Badge variant="secondary">{item.type}</Badge>
+              </div>
+            ))
+          )}
+        </CardContent>
+      </Card>
     </div>
-  );
-}
-
-function SummaryCard({
-  title,
-  value,
-  loading,
-  accent,
-  to,
-}: {
-  title: string;
-  value: number;
-  loading: boolean;
-  accent: string;
-  to: string;
-}) {
-  return (
-    <Link to={to} className={`bg-white rounded-xl p-6 shadow-sm border-l-4 ${accent} hover:shadow-md transition-shadow`}>
-      <p className="text-sm text-gray-500 font-medium">{title}</p>
-      <p className="text-3xl font-bold text-gray-900 mt-2">{loading ? "..." : value}</p>
-      <p className="text-xs text-gray-400 mt-2">Live API data</p>
-    </Link>
   );
 }

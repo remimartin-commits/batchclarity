@@ -299,3 +299,7 @@ export const limsApi = {
       .post(`/lims/results/${resultId}/review`, data)
       .then((r) => r.data),
 };
+
+export const dashboardApi = {
+  summary: () => api.get("/dashboard/summary").then((r) => r.data),
+};

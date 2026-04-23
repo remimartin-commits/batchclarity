@@ -653,7 +653,10 @@ Response: {"open_capas": 3, "overdue_capas": 1, "calibrations_overdue": 2, ...}
 Dashboard does not have direct GMP rules, but must accurately reflect the GMP state of the
 facility at the time of access. No caching of KPI values > 5 minutes.
 
-- **Status:** PENDING
+- **Status:** DONE — 2026-04-23
+- **Summary:** Expanded dashboard summary API to return full KPI set (site-scoped) plus pending action items for the
+  current user, and updated frontend dashboard to use shadcn Card/Badge with clickable KPI drill-down cards and
+  mock/real data switching via VITE_USE_MOCK.
 - **Priority:** P1
 - **Lane:** A + B
 - **Commit:** feat(dashboard): live KPI data - all modules
