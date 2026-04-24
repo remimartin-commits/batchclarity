@@ -1,4 +1,4 @@
-import os
+﻿import os
 import sys
 import importlib.metadata
 
@@ -29,6 +29,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
 from app.core.config import settings
+from app.core.attachment_config import validate_supabase_for_startup
 from app.core.database import engine, Base
 from app.core.tasks import run_overdue_checks, clear_overdue_hooks, register_overdue_hook
 from app.core.constitutional.service import load_constitutional_rules
@@ -104,6 +105,7 @@ async def lifespan(app: FastAPI):
       3. Gracefully shut down the scheduler (allow in-flight jobs to finish).
       4. Dispose the SQLAlchemy engine connection pool.
     """
+    validate_supabase_for_startup()
     # 1. Database table creation (idempotent; Alembic handles migrations in production)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -165,14 +167,17 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Production: lock to known origins. Development: allow all for convenience.
+_PRODUCTION_ORIGINS = [
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "https://t160mfctr8bq.space.minimax.io",
+    "https://nqedqxebbh8j.space.minimax.io",
+    "https://gmp-platform-backend-production.up.railway.app",
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "https://t160mfctr8bq.space.minimax.io",
-        "*",  # dev only — lock down in production
-    ],
+    allow_origins=_PRODUCTION_ORIGINS if settings.ENVIRONMENT == "production" else ["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
