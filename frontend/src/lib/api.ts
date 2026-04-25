@@ -95,6 +95,101 @@ export const rolesApi = {
   listPermissions: () => api.get("/users/permissions").then((r) => r.data),
 };
 
+function apiV1FileUrl(relativeFilePath: string): string {
+  const base = (api.defaults.baseURL || "").replace(/\/$/, "");
+  const p = relativeFilePath.startsWith("/") ? relativeFilePath : `/${relativeFilePath}`;
+  return `${base}${p}`;
+}
+
+function isRoutableAttachmentSignedUrl(url: string): boolean {
+  try {
+    const u = new URL(url, window.location.origin);
+    if (u.hostname === "invalid.invalid") return false;
+    if (u.pathname.includes("mock-use-file-endpoint")) return false;
+    return u.protocol === "https:" || u.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
+/** Prefer FastAPI `detail` string or `{ message }` for toast text. */
+async function errorTextFromFileResponse(res: Response): Promise<string> {
+  const text = await res.text().catch(() => res.statusText);
+  if (text) {
+    try {
+      const j = JSON.parse(text) as { detail?: unknown };
+      const d = j.detail;
+      if (typeof d === "string") return d;
+      if (d && typeof d === "object") {
+        const o = d as Record<string, unknown>;
+        if (typeof o.message === "string") return o.message;
+      }
+    } catch {
+      /* not JSON */
+    }
+    return text;
+  }
+  return `Download failed (${res.status})`;
+}
+
+/** GET .../file: 200 + blob in mock, 302 to Supabase when configured. */
+async function downloadQmsAttachmentViaFileEndpoint(
+  filePathSegment: string,
+  downloadJsonPath: string,
+  fileName: string
+): Promise<void> {
+  const path = apiV1FileUrl(filePathSegment);
+  const token = useAuthStore.getState().accessToken;
+  const res = await fetch(path, {
+    method: "GET",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    redirect: "manual",
+    credentials: "same-origin",
+  });
+  if (res.status === 301 || res.status === 302 || res.status === 303 || res.status === 307 || res.status === 308) {
+    const loc = res.headers.get("Location");
+    if (loc) {
+      const a = document.createElement("a");
+      a.href = loc;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      return;
+    }
+  }
+  if (res.ok) {
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fileName;
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+    return;
+  }
+  const signed = await api
+    .get<{ url: string }>(downloadJsonPath)
+    .then((r) => r.data)
+    .catch(() => null);
+  if (signed?.url && isRoutableAttachmentSignedUrl(signed.url)) {
+    const a = document.createElement("a");
+    a.href = signed.url;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    return;
+  }
+  const errText = await errorTextFromFileResponse(res);
+  throw new Error(errText);
+}
+
 // ── QMS ──────────────────────────────────────────────────────────────────────
 export const qmsApi = {
   // CAPAs
@@ -112,6 +207,42 @@ export const qmsApi = {
     api.patch(`/qms/capas/${capaId}/actions/${actionId}`, data).then((r) => r.data),
   listCapaAuditTrail: (id: string) =>
     api.get(`/qms/capas/${id}/audit-trail`).then((r) => r.data),
+  listCapaAttachments: (id: string) =>
+    api.get(`/qms/capas/${id}/attachments`).then((r) => r.data),
+  uploadCapaAttachment: (
+    id: string,
+    file: File,
+    onUploadProgress?: (progress: number) => void
+  ) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return api
+      .post(`/qms/capas/${id}/attachments`, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+        onUploadProgress: (event) => {
+          if (!onUploadProgress || !event.total) return;
+          onUploadProgress(Math.round((event.loaded * 100) / event.total));
+        },
+      })
+      .then((r) => r.data);
+  },
+  deleteCapaAttachment: (capaId: string, attachmentId: string) =>
+    api.delete(`/qms/capas/${capaId}/attachments/${attachmentId}`).then((r) => r.data),
+  /**
+   * CAPA attachment download: always use this — GET .../file (not .../download JSON).
+   * - Mock / no Supabase: 200 with file bytes, downloaded via blob + anchor (no new tab).
+   * - Supabase: 302 Location to signed URL (new tab) or 200+body per backend.
+   * Do not call GET .../download and window.open(data.url); that can surface non-routable
+   * or misconfigured storage hosts.
+   */
+  downloadCapaAttachmentFile: (capaId: string, attachmentId: string, fileName: string) =>
+    downloadQmsAttachmentViaFileEndpoint(
+      `qms/capas/${capaId}/attachments/${attachmentId}/file`,
+      `/qms/capas/${capaId}/attachments/${attachmentId}/download`,
+      fileName
+    ),
+  listCapaSignatures: (id: string) =>
+    api.get(`/qms/capas/${id}/signatures`).then((r) => r.data),
 
   // Deviations
   listDeviations: (params?: Record<string, string | number>) =>

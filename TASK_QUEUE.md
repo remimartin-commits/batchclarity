@@ -400,6 +400,23 @@
 
 ---
 
+### TASK-064 [P0] — CAPA attachment download: loading state + error text (replaces TASK-CAPA-ATTACH-DL)
+- **Status:** DONE — 2026-04-25 (governance v3.1: tests + completion report)
+- **Summary:** Hardens UX for **TASK-CAPA-ATTACH-DL** concerns: `downloadQmsAttachmentViaFileEndpoint` already checked `res.ok` before `blob()`. **Added:** `errorTextFromFileResponse()` so failed `/file` responses surface FastAPI `detail` (string or `{ message }`) in the thrown `Error` for toasts. **CAPADetail** attachment table: per-row `downloadingAttachmentId` — button shows spinner + “Downloading”, `disabled` + `aria-busy` while the fetch runs. **Backend tests (§0.11):** `backend/tests/qms/test_capa_attachments.py` — happy-path `GET .../file` asserts **200**, **Content-Type** includes `application/pdf`, **body bytes** match uploaded PDF fixture, **Content-Disposition** includes filename; **404** for unknown `attachment_id` and unknown `capa_id`. **No backend handler changes, no migration.**
+- **Commit:** `fix(capa): CAPA attachment download loading state and error surfacing — TASK-064`
+- **Completion report (v3.1)**
+  - **Files changed:** `frontend/src/lib/api.ts` — `errorTextFromFileResponse` parses JSON error bodies on failed file downloads; `frontend/src/pages/qms/CAPADetail.tsx` — per-row download loading state (`finally` clears). `backend/tests/qms/test_capa_attachments.py` — API tests above. `backend/tests/qms/__init__.py` — package marker.
+  - **Shared file:** `frontend/src/lib/api.ts` — **Justification:** CAPA attachment download error handling must parse the `/file` error response body in the shared QMS client helper `downloadQmsAttachmentViaFileEndpoint` (used for CAPA file downloads). Change is confined to that helper’s error path; no edits to PAUSED/DEFERRED modules.
+  - **Migrations:** none.
+  - **Endpoints changed:** none (behavioural contract tested only).
+  - **Tests:** `backend/tests/qms/test_capa_attachments.py` (happy path + 404s). **pytest:** `tests/ -x -q` → **80 passed, 2 skipped** (2026-04-25).
+  - **Manual verification:** Automated tests assert the same response the browser’s Network tab would show for `/file` (HTTP **200** and **binary** body bytes, not JSON). **Recommended before production:** in Chrome/Edge, upload a PDF on CAPA detail → Download → confirm **200** + **blob** in Network and the saved file opens locally (not executed in agent CI).
+  - **Route prefix:** `/api/v1/qms/capas` (see `app/api/v1/router.py` → QMS router).
+  - **Risks:** Ephemeral platform storage (e.g. Railway) can lose mock disk files after redeploy; use durable object storage in production — infra, not a regression from this task.
+
+---
+
+
 *Queue maintained by: Matrix Agent*
 *Updated: 2026-04-23 15:00*
 *Strategic path: Option C (ADR-005) — GMP Phase 1 now, truth layer Phase 2 after guard conditions met*
