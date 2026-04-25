@@ -1,4 +1,10 @@
-import { useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import {
+  useReactTable,
+  getCoreRowModel,
+  flexRender,
+  type ColumnDef,
+} from "@tanstack/react-table";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import { qmsApi, usersApi } from "@/lib/api";
@@ -8,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Card as UiCard, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Loader2 } from "lucide-react";
 
 const STATUS_STYLES: Record<string, string> = {
   open: "bg-gray-100 text-gray-600",
@@ -33,18 +40,30 @@ const RISK_STYLES: Record<string, string> = {
   critical: "text-red-700 bg-red-50",
 };
 
+function formatBytes(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  const kb = bytes / 1024;
+  if (kb < 1024) return `${kb.toFixed(1)} KB`;
+  return `${(kb / 1024).toFixed(1)} MB`;
+}
+
 export default function CAPADetail() {
   const { toast } = useToast();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [isSignOpen, setIsSignOpen] = useState(false);
+  const [downloadingAttachmentId, setDownloadingAttachmentId] = useState<string | null>(null);
   const { data: auditTrail = [] } = useQuery({
     queryKey: ["qms-capa-audit", id],
     queryFn: () => qmsApi.listCapaAuditTrail(id!),
     enabled: Boolean(id),
   });
-
+  const { data: attachments = [], isLoading: attachmentsLoading } = useQuery({
+    queryKey: ["qms-capa-attachments", id],
+    queryFn: () => qmsApi.listCapaAttachments(id!),
+    enabled: Boolean(id),
+  });
 
   const { data: capa, isLoading } = useQuery({
     queryKey: ["qms-capa-detail", id],
@@ -59,10 +78,91 @@ export default function CAPADetail() {
     staleTime: 300_000,
   });
 
-  const ownerUser = users.find((u: any) => u.id === capa?.owner_id);
+  const ownerUser = users.find((u: { id: string }) => u.id === capa?.owner_id);
   const ownerLabel = ownerUser
     ? `${ownerUser.full_name} (${ownerUser.username})`
     : capa?.owner_id ?? "—";
+
+  const uploaderLabel = useCallback(
+    (uid: string) => {
+      const u = users.find((x: { id: string }) => x.id === uid);
+      return u ? `${u.full_name} (${u.username})` : uid;
+    },
+    [users]
+  );
+
+  const attachmentColumns = useMemo<ColumnDef<Record<string, unknown>>[]>(
+    () => [
+      { accessorKey: "file_name", header: "File name" },
+      {
+        id: "size",
+        header: "Size",
+        cell: ({ row }) => formatBytes(Number(row.original.file_size_bytes ?? 0)),
+      },
+      {
+        id: "by",
+        header: "Uploaded by",
+        cell: ({ row }) => uploaderLabel(String(row.original.uploaded_by_id ?? "")),
+      },
+      {
+        accessorKey: "uploaded_at",
+        header: "Uploaded at",
+        cell: ({ row }) =>
+          row.original.uploaded_at
+            ? new Date(String(row.original.uploaded_at)).toLocaleString()
+            : "—",
+      },
+      {
+        id: "dl",
+        header: "Download",
+        cell: ({ row }) => {
+          const attId = String(row.original.id);
+          const busy = downloadingAttachmentId === attId;
+          return (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={busy}
+              aria-busy={busy}
+              onClick={async () => {
+                if (!id) return;
+                setDownloadingAttachmentId(attId);
+                try {
+                  await qmsApi.downloadCapaAttachmentFile(id, attId, String(row.original.file_name));
+                } catch (e: unknown) {
+                  const err = e as { message?: string };
+                  toast({
+                    title: "Download failed",
+                    description: err?.message ?? "Could not download attachment.",
+                    variant: "destructive",
+                  });
+                } finally {
+                  setDownloadingAttachmentId((cur) => (cur === attId ? null : cur));
+                }
+              }}
+            >
+              {busy ? (
+                <>
+                  <Loader2 className="mr-1 h-3 w-3 animate-spin" aria-hidden />
+                  Downloading
+                </>
+              ) : (
+                "Download"
+              )}
+            </Button>
+          );
+        },
+      },
+    ],
+    [id, uploaderLabel, downloadingAttachmentId, toast]
+  );
+
+  const attachmentTable = useReactTable({
+    data: attachments as Record<string, unknown>[],
+    columns: attachmentColumns,
+    getCoreRowModel: getCoreRowModel(),
+  });
 
   const signMutation = useMutation({
     mutationFn: (payload: { username: string; password: string; meaning: string; comments: string }) =>
@@ -295,6 +395,54 @@ export default function CAPADetail() {
           </div>
         )}
       </FieldCard>
+
+      {/* Attachments — TanStack Table (GMP evidence) */}
+      <UiCard>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-xs uppercase tracking-wide text-gray-500 font-semibold">
+            Attachments ({attachments.length})
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {attachmentsLoading ? (
+            <p className="text-sm text-gray-400 flex items-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+              Loading attachments…
+            </p>
+          ) : !attachments.length ? (
+            <p className="text-sm text-gray-400 italic">No attachments for this CAPA.</p>
+          ) : (
+            <div className="overflow-x-auto rounded-md border">
+              <Table>
+                <TableHeader>
+                  {attachmentTable.getHeaderGroups().map((hg) => (
+                    <TableRow key={hg.id}>
+                      {hg.headers.map((header) => (
+                        <TableHead key={header.id}>
+                          {header.isPlaceholder
+                            ? null
+                            : flexRender(header.column.columnDef.header, header.getContext())}
+                        </TableHead>
+                      ))}
+                    </TableRow>
+                  ))}
+                </TableHeader>
+                <TableBody>
+                  {attachmentTable.getRowModel().rows.map((row) => (
+                    <TableRow key={row.id}>
+                      {row.getVisibleCells().map((cell) => (
+                        <TableCell key={cell.id}>
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </UiCard>
 
       <FieldCard title={`Audit Trail (${auditTrail.length})`}>
         {!auditTrail.length ? (

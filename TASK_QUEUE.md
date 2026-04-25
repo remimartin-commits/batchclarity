@@ -414,6 +414,34 @@
   - **Route prefix:** `/api/v1/qms/capas` (see `app/api/v1/router.py` → QMS router).
   - **Risks:** Ephemeral platform storage (e.g. Railway) can lose mock disk files after redeploy; use durable object storage in production — infra, not a regression from this task.
 
+### TASK-065 [P1] — CAPA attachment list UI with download button
+- **Status:** DONE — 2026-04-25
+## CONTEXT
+CAPA detail page on `main` had no attachment section. Users need to see GMP evidence files and download them from the UI.
+## ACCEPTANCE CRITERIA
+- [x] Attachment card on CAPA detail with list from `GET /api/v1/qms/capas/{id}/attachments`
+- [x] TanStack Table: filename, size, uploader, uploaded at, download per row
+- [x] `qmsApi.downloadCapaAttachmentFile` + per-row loading (`downloadingAttachmentId`, `Loader2`, `finally`, error toast)
+- [x] Empty and loading states
+## TECHNICAL NOTES
+- **Files:** `frontend/src/pages/qms/CAPADetail.tsx` only. No `api.ts` or backend changes (list/download already in TASK-064).
+- **Route prefix:** `/api/v1/qms/capas` (confirmed in `app/api/v1/router.py` → QMS).
+## EXAMPLE
+- List: `qmsApi.listCapaAttachments(capaId)` returns `CAPAAttachmentOut[]` fields `file_name`, `file_size_bytes`, `uploaded_by_id`, `uploaded_at`.
+## GMP RULE
+- Evidence list is read-only display; no workflow or e-sig change. ALCOA: attributable uploader display via `users` list.
+- **Summary:** Added **Attachments** `UiCard` with TanStack Table (`@tanstack/react-table`), `formatBytes`, uploader resolution via `usersApi` list, download column with TASK-064 loading/error pattern. No upload UI (out of scope).
+- **Commit:** `feat(capa): CAPA attachment list UI with download button — TASK-065`
+- **Completion report**
+  - **Files changed:** `frontend/src/pages/qms/CAPADetail.tsx` — attachment query, table, empty/loading, download.
+  - **Shared file changes:** none.
+  - **Migrations:** none.
+  - **Endpoints changed:** none.
+  - **Tests:** none (UI-only); regression: `pytest tests/ -x -q`, `tsc --noEmit` to be run at commit.
+  - **Manual verification:** See acceptance (browser: list + download if attachments exist; empty CAPA shows message).
+  - **Route prefix:** `/api/v1/qms/capas`
+  - **Risks:** none.
+
 ---
 
 
